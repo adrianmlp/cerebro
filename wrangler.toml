@@ -1,0 +1,11 @@
+name = "cerebro-worker"
+main = "worker/index.js"
+compatibility_date = "2024-01-01"
+
+[ai]
+binding = "AI"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "cerebro-db"
+database_id = "bf00f432-f4e3-45ee-8e94-2e1b8271ef2e"

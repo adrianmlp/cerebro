@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Cerebro</title>
+  <!-- Set this to your deployed Worker URL after deployment -->
+  <meta name="worker-url" content="https://cerebro-worker.nextgreatpour.workers.dev" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+<div id="app">
+  <header>
+    <span class="logo">Cerebro</span>
+    <nav>
+      <button class="active" data-view="inbox">Inbox</button>
+      <button data-view="tasks">Tasks</button>
+      <button data-view="notes">Notes</button>
+      <button data-view="bookmarks">Bookmarks</button>
+      <button data-view="calendar">Calendar</button>
+    </nav>
+    <div class="header-search">
+      <input type="text" id="search-input" placeholder="Ask anything… (Enter)" />
+      <span class="search-icon">⌕</span>
+    </div>
+  </header>
+
+  <main>
+    <!-- Capture bar -->
+    <section id="capture-section">
+      <div class="capture-wrap">
+        <textarea
+          id="capture-input"
+          placeholder="Capture anything… &quot;Call dentist Tuesday 2pm&quot;, an idea, a URL, a meeting note"
+          rows="2"
+        ></textarea>
+        <div class="capture-footer">
+          <span class="capture-hint">⌘ + Enter to save</span>
+          <button id="capture-btn">Capture</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Smart search result panel -->
+    <div id="search-panel">
+      <button class="close-btn" onclick="closeSearch()">×</button>
+      <div id="search-answer" class="search-answer"></div>
+      <div id="search-refs" class="search-refs"></div>
+    </div>
+
+    <!-- Inbox view -->
+    <section id="inbox-section">
+      <div class="view-header">
+        <span class="view-title">Inbox</span>
+      </div>
+      <div id="inbox-list" class="entries-list"></div>
+    </section>
+
+    <!-- Tasks view -->
+    <section id="tasks-section" style="display:none">
+      <div class="view-header">
+        <span class="view-title">Tasks</span>
+        <div class="filter-btns">
+          <button class="filter-btn active" data-filter="open">Open</button>
+          <button class="filter-btn" data-filter="done">Done</button>
+        </div>
+      </div>
+      <div id="tasks-list" class="entries-list"></div>
+    </section>
+
+    <!-- Notes view -->
+    <section id="notes-section" style="display:none">
+      <div class="view-header">
+        <span class="view-title">Notes</span>
+      </div>
+      <div id="notes-list" class="entries-list"></div>
+    </section>
+
+    <!-- Bookmarks view -->
+    <section id="bookmarks-section" style="display:none">
+      <div class="view-header">
+        <span class="view-title">Bookmarks</span>
+      </div>
+      <div id="bookmarks-list" class="entries-list"></div>
+    </section>
+
+    <!-- Calendar view -->
+    <section id="calendar-section" style="display:none">
+      <div class="view-header">
+        <div class="cal-nav">
+          <button id="cal-prev">&#8249;</button>
+          <span class="cal-month-label" id="cal-month-label"></span>
+          <button id="cal-next">&#8250;</button>
+        </div>
+      </div>
+      <div class="cal-grid" id="cal-grid"></div>
+    </section>
+  </main>
+</div>
+
+<div id="toast"></div>
+
+<script src="app.js"></script>
+</body>
+</html>
