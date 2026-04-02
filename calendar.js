@@ -398,7 +398,7 @@ function showEventDetail(ev) {
   const isRecurring = ev.recurrence_type !== 'NONE' || ev.parent_event_id;
 
   document.getElementById('detail-footer').innerHTML = `
-    <button class="btn btn-ghost btn-sm" onclick="openMeetingNotes('${ev.id}')">📋 Meeting Notes</button>
+    <button class="btn btn-ghost btn-sm" onclick="openMeetingNotes('${ev.id}')">📋 Event Notes</button>
     <button class="btn btn-ghost btn-sm" onclick="startEdit(${JSON.stringify(ev).replace(/"/g,'&quot;')}, ${isRecurring})">✏️ Edit</button>
     <button class="btn btn-ghost btn-sm" style="color:var(--red)" onclick="startDelete(${JSON.stringify(ev).replace(/"/g,'&quot;')}, ${isRecurring})">🗑 Delete</button>
   `;
