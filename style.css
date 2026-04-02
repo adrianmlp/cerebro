@@ -898,6 +898,121 @@ body {
 
 .note-save-indicator.saved { color: var(--green); }
 
+/* Note formatting toolbar */
+.note-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 6px 0;
+  margin-bottom: 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.note-toolbar-btn {
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: var(--text-2);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 4px 10px;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+  font-family: var(--font-body);
+}
+
+.note-toolbar-btn:hover {
+  background: rgba(255,255,255,0.06);
+  border-color: var(--border-hover);
+  color: var(--text);
+}
+
+.note-toolbar-btn strong { font-weight: 800; font-size: 13px; }
+
+.note-toolbar-divider {
+  width: 1px;
+  height: 18px;
+  background: var(--border);
+  margin: 0 4px;
+}
+
+/* Tags section in editor */
+.note-tags-section {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 10px 0 4px;
+  border-top: 1px solid var(--border);
+  margin-top: 12px;
+}
+
+.note-tags-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.note-tag-input {
+  background: none;
+  border: 1px dashed var(--border);
+  border-radius: 20px;
+  color: var(--text-2);
+  font-size: 11px;
+  font-family: var(--font-body);
+  outline: none;
+  padding: 3px 10px;
+  width: 160px;
+  transition: border-color 0.2s, color 0.2s;
+}
+
+.note-tag-input:focus {
+  border-color: var(--indigo);
+  color: var(--text);
+}
+
+.note-tag-input::placeholder { color: var(--text-3); }
+
+/* Tag chips — shared between editor and note cards */
+.tag-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: rgba(99,102,241,0.12);
+  border: 1px solid rgba(99,102,241,0.3);
+  border-radius: 20px;
+  color: var(--violet);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  padding: 2px 8px;
+  text-transform: lowercase;
+}
+
+.tag-chip.editable {
+  padding-right: 4px;
+}
+
+.tag-chip-remove {
+  background: none;
+  border: none;
+  color: var(--text-3);
+  cursor: pointer;
+  font-size: 12px;
+  line-height: 1;
+  padding: 0 2px;
+  transition: color 0.15s;
+}
+
+.tag-chip-remove:hover { color: var(--red); }
+
+/* Tag chips on note cards */
+.note-card-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 8px 0 4px;
+}
+
 /* ─────────────────────────────
    AI CHAT
 ───────────────────────────── */

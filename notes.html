@@ -32,9 +32,14 @@
       </div>
     </div>
 
-    <div class="search-wrap" style="margin-bottom:20px">
+    <div class="search-wrap" style="margin-bottom:12px">
       <span class="search-icon">⌕</span>
       <input class="input" id="search-input" placeholder="Search notes…" />
+    </div>
+
+    <!-- Tag filter pills (shown only when tags exist) -->
+    <div id="tag-filter-row" style="margin-bottom:16px;display:none">
+      <div class="filter-pills" id="tag-filter-pills"></div>
     </div>
 
     <div class="notes-grid" id="notes-grid">
@@ -46,11 +51,29 @@
   <div id="editor-view" style="display:none">
     <div class="page-header">
       <button class="btn btn-ghost btn-sm" id="back-btn">← Back</button>
-      <span class="note-save-indicator" id="save-indicator" style="margin-left:auto"></span>
-      <button class="btn-icon danger" id="delete-note-btn" title="Delete note">🗑</button>
+      <div style="margin-left:auto;display:flex;align-items:center;gap:8px">
+        <span class="note-save-indicator" id="save-indicator"></span>
+        <button class="btn btn-primary btn-sm" id="save-note-btn">Save</button>
+      </div>
+      <button class="btn-icon danger" id="delete-note-btn" title="Delete note" style="margin-left:4px">🗑</button>
     </div>
+
     <input class="note-editor-title" id="note-title" placeholder="Note title…" />
+
+    <!-- Formatting toolbar -->
+    <div class="note-toolbar">
+      <button class="note-toolbar-btn" id="fmt-bold" title="Bold (wraps selection in **)"><strong>B</strong></button>
+      <div class="note-toolbar-divider"></div>
+      <button class="note-toolbar-btn" id="fmt-bullet" title="Bullet list (prefixes lines with •)">• List</button>
+    </div>
+
     <textarea class="note-editor-content" id="note-content" placeholder="Start writing…"></textarea>
+
+    <!-- Tags section -->
+    <div class="note-tags-section">
+      <div class="note-tags-chips" id="note-tags-chips"></div>
+      <input class="note-tag-input" id="note-tag-input" placeholder="Add tag… (press Enter or comma)" />
+    </div>
   </div>
 
 </main>

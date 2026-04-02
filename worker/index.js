@@ -43,6 +43,8 @@ async function runMigrations(env) {
   for (const sql of stmts) {
     try { await env.DB.prepare(sql).run(); } catch (e) {}
   }
+  // Column additions (safe to retry — D1 throws if column already exists)
+  try { await env.DB.prepare(`ALTER TABLE notes ADD COLUMN tags TEXT DEFAULT ''`).run(); } catch(e) {}
 }
 
 // ── Recurring event generation ──
@@ -336,9 +338,11 @@ export default {
       if (seg[1] === 'notes' && !seg[2]) {
         if (method === 'GET') {
           const search = url.searchParams.get('search');
+          const tag    = url.searchParams.get('tag');
           let q = `SELECT * FROM notes WHERE event_id IS NULL`;
           const p = [];
           if (search) { q += ` AND (title LIKE ? OR content LIKE ?)`; const s = `%${search}%`; p.push(s, s); }
+          if (tag)    { q += ` AND (',' || COALESCE(tags,'') || ',') LIKE ?`; p.push(`%,${tag},%`); }
           q += ' ORDER BY updated_at DESC';
           const { results } = await env.DB.prepare(q).bind(...p).all();
           return json({ notes: results });
@@ -348,8 +352,8 @@ export default {
           const body = await request.json();
           const id = crypto.randomUUID();
           const note = await env.DB.prepare(
-            `INSERT INTO notes (id, title, content) VALUES (?,?,?) RETURNING *`
-          ).bind(id, body.title || 'Untitled', body.content || '').first();
+            `INSERT INTO notes (id, title, content, tags) VALUES (?,?,?,?) RETURNING *`
+          ).bind(id, body.title || 'Untitled', body.content || '', body.tags || '').first();
           return json({ note }, 201);
         }
       }
@@ -362,6 +366,7 @@ export default {
           const sets = []; const p = [];
           if (body.title   !== undefined) { sets.push('title = ?');   p.push(body.title); }
           if (body.content !== undefined) { sets.push('content = ?'); p.push(body.content); }
+          if (body.tags    !== undefined) { sets.push('tags = ?');    p.push(body.tags); }
           if (!sets.length) return json({ error: 'Nothing to update' }, 400);
           sets.push("updated_at = datetime('now')");
           p.push(id);
