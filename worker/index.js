@@ -19,225 +19,433 @@ function checkAuth(request, env) {
   return pass === env.APP_PASSWORD;
 }
 
+// ── Migrations ──
 async function runMigrations(env) {
-  try {
-    await env.DB.prepare(`
-      CREATE TABLE IF NOT EXISTS entries (
-        id          INTEGER PRIMARY KEY AUTOINCREMENT,
-        type        TEXT NOT NULL,
-        title       TEXT NOT NULL,
-        body        TEXT,
-        url         TEXT,
-        due_date    TEXT,
-        tags        TEXT,
-        status      TEXT DEFAULT 'open',
-        ai_summary  TEXT,
-        raw_input   TEXT,
-        created_at  TEXT DEFAULT (datetime('now')),
-        updated_at  TEXT DEFAULT (datetime('now'))
-      )
-    `).run();
-  } catch (e) {}
+  const stmts = [
+    `CREATE TABLE IF NOT EXISTS tasks (
+      id TEXT PRIMARY KEY, title TEXT NOT NULL, description TEXT DEFAULT '',
+      priority TEXT DEFAULT 'NORMAL', completed INTEGER DEFAULT 0,
+      due_date TEXT, created_at TEXT DEFAULT (datetime('now')), updated_at TEXT DEFAULT (datetime('now'))
+    )`,
+    `CREATE TABLE IF NOT EXISTS calendar_events (
+      id TEXT PRIMARY KEY, title TEXT NOT NULL, description TEXT DEFAULT '',
+      start_time TEXT NOT NULL, end_time TEXT, color TEXT DEFAULT '#6366F1',
+      is_important INTEGER DEFAULT 0, location TEXT DEFAULT '',
+      recurrence_type TEXT DEFAULT 'NONE', recurrence_end TEXT,
+      parent_event_id TEXT, exception_date TEXT, is_deleted INTEGER DEFAULT 0,
+      created_at TEXT DEFAULT (datetime('now')), updated_at TEXT DEFAULT (datetime('now'))
+    )`,
+    `CREATE TABLE IF NOT EXISTS notes (
+      id TEXT PRIMARY KEY, title TEXT NOT NULL, content TEXT DEFAULT '',
+      event_id TEXT, created_at TEXT DEFAULT (datetime('now')), updated_at TEXT DEFAULT (datetime('now'))
+    )`,
+  ];
+  for (const sql of stmts) {
+    try { await env.DB.prepare(sql).run(); } catch (e) {}
+  }
 }
 
-async function parseWithAI(raw, env) {
-  const today = new Date().toISOString().split('T')[0];
-  const prompt = `Today's date is ${today}.
-
-Given this input from a personal memory/task app: "${raw}"
-
-Extract and return ONLY valid JSON (no markdown, no explanation) in this exact shape:
-{
-  "type": "task|note|bookmark|event",
-  "title": "concise title",
-  "body": "additional detail if any, else null",
-  "url": "URL if present, else null",
-  "due_date": "YYYY-MM-DD if a date/time is mentioned, else null",
-  "tags": ["tag1", "tag2"],
-  "ai_summary": "one-line summary of what this is"
+// ── Recurring event generation ──
+function advanceDate(date, recurrenceType) {
+  const d = new Date(date);
+  switch (recurrenceType) {
+    case 'DAILY':    d.setDate(d.getDate() + 1); break;
+    case 'WEEKLY':   d.setDate(d.getDate() + 7); break;
+    case 'BIWEEKLY': d.setDate(d.getDate() + 14); break;
+    case 'MONTHLY':  d.setMonth(d.getMonth() + 1); break;
+  }
+  return d;
 }
 
-Rules:
-- type=task if it describes something to do
-- type=event if it describes a calendar event or meeting
-- type=bookmark if it contains a URL
-- type=note otherwise
-- Resolve relative dates like "Tuesday", "next week", "tomorrow" to absolute YYYY-MM-DD
-- Keep title short (under 60 chars)
-- Extract 1-3 relevant tags`;
-
-  const response = await env.AI.run('@cf/meta/llama-3.1-8b-instruct', {
-    messages: [{ role: 'user', content: prompt }],
-    max_tokens: 512,
-  });
-
-  const text = response.response.trim();
-  // Strip markdown code fences if model includes them
-  const clean = text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
-  return JSON.parse(clean);
+function dateStr(d) {
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 }
 
-async function searchWithAI(query, entries, env) {
-  const entriesText = entries
-    .map(e => `[${e.id}] ${e.type.toUpperCase()} — ${e.title}${e.due_date ? ` (due ${e.due_date})` : ''}${e.ai_summary ? `: ${e.ai_summary}` : ''}`)
-    .join('\n');
+function generateRecurringInstances(event, rangeStart, rangeEnd, exceptionMap) {
+  const instances = [];
+  if (event.recurrence_type === 'NONE') return instances;
 
-  const prompt = `You are a personal assistant helping the user search their memory app called Cerebro.
+  const start = new Date(event.start_time);
+  const duration = event.end_time ? (new Date(event.end_time) - start) : 0;
+  const recEnd = event.recurrence_end ? new Date(event.recurrence_end + 'T23:59:59') : new Date(rangeEnd + 'T23:59:59');
+  const rEnd = recEnd < new Date(rangeEnd + 'T23:59:59') ? recEnd : new Date(rangeEnd + 'T23:59:59');
+  const rStart = new Date(rangeStart + 'T00:00:00');
 
-User's query: "${query}"
+  let cur = new Date(start);
+  let safety = 0;
 
-Here are their stored entries:
-${entriesText}
+  while (cur <= rEnd && safety++ < 500) {
+    const key = `${event.id}_${dateStr(cur)}`;
+    const exc = exceptionMap[key];
 
-Respond with a helpful, conversational answer to the user's query. Reference specific entry IDs in brackets like [42] when mentioning entries. Be concise — 2-4 sentences max.`;
+    if (cur >= rStart) {
+      if (exc) {
+        if (!exc.is_deleted) {
+          instances.push({ ...exc, _isInstance: true });
+        }
+      } else {
+        const endTime = duration ? new Date(cur.getTime() + duration).toISOString() : null;
+        instances.push({
+          ...event,
+          id: event.id,
+          start_time: cur.toISOString(),
+          end_time: endTime,
+          _instanceDate: dateStr(cur),
+          _isInstance: true,
+        });
+      }
+    }
 
-  const response = await env.AI.run('@cf/meta/llama-3.1-8b-instruct', {
-    messages: [{ role: 'user', content: prompt }],
-    max_tokens: 512,
-  });
+    cur = advanceDate(cur, event.recurrence_type);
+  }
 
-  return response.response.trim();
+  return instances;
 }
 
+// ── Router ──
 export default {
   async fetch(request, env) {
     await runMigrations(env);
 
     const url = new URL(request.url);
-    const { pathname } = url;
+    const path = url.pathname;
+    const method = request.method;
 
-    if (request.method === 'OPTIONS') {
-      return new Response(null, { headers: CORS });
+    if (method === 'OPTIONS') return new Response(null, { headers: CORS });
+
+    if (path.startsWith('/api/') && !checkAuth(request, env)) {
+      return new Response('Unauthorized', {
+        status: 401,
+        headers: { 'WWW-Authenticate': 'Basic realm="Cerebro"', ...CORS },
+      });
     }
 
-    // All API routes require auth
-    if (pathname.startsWith('/api/')) {
-      if (!checkAuth(request, env)) {
-        return new Response('Unauthorized', {
-          status: 401,
-          headers: { 'WWW-Authenticate': 'Basic realm="Cerebro"', ...CORS },
-        });
-      }
-    }
+    const seg = path.split('/').filter(Boolean); // ['api', 'tasks', id, ...]
 
-    // POST /api/capture — parse raw input with AI and save
-    if (pathname === '/api/capture' && request.method === 'POST') {
-      const { raw } = await request.json();
-      if (!raw?.trim()) return json({ error: 'raw is required' }, 400);
+    try {
 
-      let parsed;
-      try {
-        parsed = await parseWithAI(raw.trim(), env);
-      } catch (e) {
-        return json({ error: `AI parsing failed: ${e.message}. Raw input saved anyway.` }, 500);
-      }
+      // ──────────────────────────────
+      // TASKS
+      // ──────────────────────────────
+      if (seg[1] === 'tasks' && !seg[2]) {
+        if (method === 'GET') {
+          const priority  = url.searchParams.get('priority');
+          const completed = url.searchParams.get('completed');
+          const sort      = url.searchParams.get('sort') || 'priority';
 
-      const { type, title, body, url: entryUrl, due_date, tags, ai_summary } = parsed;
-      const tagsStr = Array.isArray(tags) ? tags.join(',') : (tags || '');
+          let q = 'SELECT * FROM tasks WHERE 1=1';
+          const p = [];
+          if (priority)  { q += ' AND priority = ?';  p.push(priority); }
+          if (completed !== null && completed !== '') { q += ' AND completed = ?'; p.push(completed === 'true' ? 1 : 0); }
 
-      const result = await env.DB.prepare(
-        `INSERT INTO entries (type, title, body, url, due_date, tags, ai_summary, raw_input)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?) RETURNING *`
-      ).bind(type, title, body || null, entryUrl || null, due_date || null, tagsStr, ai_summary || null, raw).first();
+          const priorityOrder = "CASE priority WHEN 'URGENT' THEN 0 WHEN 'HIGH' THEN 1 WHEN 'NORMAL' THEN 2 WHEN 'BACKLOG' THEN 3 ELSE 4 END";
+          if (sort === 'priority')  q += ` ORDER BY ${priorityOrder}, due_date ASC NULLS LAST`;
+          else if (sort === 'due')  q += ' ORDER BY due_date ASC NULLS LAST, created_at DESC';
+          else                      q += ' ORDER BY created_at DESC';
 
-      return json({ entry: result });
-    }
+          const { results } = await env.DB.prepare(q).bind(...p).all();
+          return json({ tasks: results });
+        }
 
-    // GET /api/entries — list entries
-    if (pathname === '/api/entries' && request.method === 'GET') {
-      const type = url.searchParams.get('type');
-      const status = url.searchParams.get('status');
-      const from = url.searchParams.get('from');
-      const to = url.searchParams.get('to');
-
-      let query = 'SELECT * FROM entries WHERE 1=1';
-      const params = [];
-
-      if (type) { query += ' AND type = ?'; params.push(type); }
-      if (status) { query += ' AND status = ?'; params.push(status); }
-      if (from) { query += ' AND (due_date >= ? OR (due_date IS NULL AND created_at >= ?))'; params.push(from, from); }
-      if (to) { query += ' AND (due_date <= ? OR (due_date IS NULL AND created_at <= ?))'; params.push(to, to); }
-
-      query += ' ORDER BY COALESCE(due_date, created_at) ASC, id DESC';
-
-      const { results } = await env.DB.prepare(query).bind(...params).all();
-      return json({ entries: results });
-    }
-
-    // GET /api/calendar?year=&month= — entries with due dates in that month
-    if (pathname === '/api/calendar' && request.method === 'GET') {
-      const year = url.searchParams.get('year') || new Date().getFullYear();
-      const month = String(url.searchParams.get('month') || new Date().getMonth() + 1).padStart(2, '0');
-      const from = `${year}-${month}-01`;
-      const lastDay = new Date(year, month, 0).getDate();
-      const to = `${year}-${month}-${String(lastDay).padStart(2, '0')}`;
-
-      const { results } = await env.DB.prepare(
-        `SELECT * FROM entries WHERE due_date >= ? AND due_date <= ? ORDER BY due_date ASC`
-      ).bind(from, to).all();
-
-      return json({ entries: results });
-    }
-
-    // PATCH /api/entries/:id — update an entry
-    if (pathname.startsWith('/api/entries/') && request.method === 'PATCH') {
-      const id = pathname.split('/')[3];
-      const updates = await request.json();
-      const allowed = ['title', 'body', 'url', 'due_date', 'tags', 'status', 'ai_summary'];
-      const sets = [];
-      const params = [];
-
-      for (const key of allowed) {
-        if (key in updates) {
-          sets.push(`${key} = ?`);
-          params.push(updates[key] === '' ? null : updates[key]);
+        if (method === 'POST') {
+          const body = await request.json();
+          const id = crypto.randomUUID();
+          const task = await env.DB.prepare(
+            `INSERT INTO tasks (id, title, description, priority, due_date) VALUES (?,?,?,?,?) RETURNING *`
+          ).bind(id, body.title, body.description || '', body.priority || 'NORMAL', body.dueDate || null).first();
+          return json({ task }, 201);
         }
       }
 
-      if (!sets.length) return json({ error: 'No valid fields to update' }, 400);
+      if (seg[1] === 'tasks' && seg[2]) {
+        const id = seg[2];
 
-      sets.push(`updated_at = datetime('now')`);
-      params.push(id);
+        if (method === 'PATCH') {
+          const body = await request.json();
+          const allowed = { title: body.title, description: body.description, priority: body.priority, completed: body.completed !== undefined ? (body.completed ? 1 : 0) : undefined, due_date: body.dueDate };
+          const sets = []; const p = [];
+          for (const [k, v] of Object.entries(allowed)) {
+            if (v !== undefined) { sets.push(`${k} = ?`); p.push(v === '' ? null : v); }
+          }
+          if (!sets.length) return json({ error: 'Nothing to update' }, 400);
+          sets.push("updated_at = datetime('now')");
+          p.push(id);
+          const task = await env.DB.prepare(`UPDATE tasks SET ${sets.join(', ')} WHERE id = ? RETURNING *`).bind(...p).first();
+          return task ? json({ task }) : json({ error: 'Not found' }, 404);
+        }
 
-      const result = await env.DB.prepare(
-        `UPDATE entries SET ${sets.join(', ')} WHERE id = ? RETURNING *`
-      ).bind(...params).first();
-
-      if (!result) return json({ error: 'Not found' }, 404);
-      return json({ entry: result });
-    }
-
-    // DELETE /api/entries/:id
-    if (pathname.startsWith('/api/entries/') && request.method === 'DELETE') {
-      const id = pathname.split('/')[3];
-      await env.DB.prepare('DELETE FROM entries WHERE id = ?').bind(id).run();
-      return json({ ok: true });
-    }
-
-    // GET /api/search?q=
-    if (pathname === '/api/search' && request.method === 'GET') {
-      const q = url.searchParams.get('q') || '';
-      if (!q.trim()) return json({ answer: '', entries: [] });
-
-      // Fetch all entries (keep it simple for personal scale)
-      const { results } = await env.DB.prepare(
-        `SELECT * FROM entries WHERE status != 'archived' ORDER BY created_at DESC LIMIT 200`
-      ).all();
-
-      let answer;
-      try {
-        answer = await searchWithAI(q, results, env);
-      } catch (e) {
-        answer = `Search failed: ${e.message}`;
+        if (method === 'DELETE') {
+          await env.DB.prepare('DELETE FROM tasks WHERE id = ?').bind(id).run();
+          return json({ ok: true });
+        }
       }
 
-      // Extract referenced IDs from answer like [42]
-      const refIds = new Set([...answer.matchAll(/\[(\d+)\]/g)].map(m => Number(m[1])));
-      const referenced = results.filter(e => refIds.has(e.id));
+      // ──────────────────────────────
+      // CALENDAR EVENTS
+      // ──────────────────────────────
+      if (seg[1] === 'events' && !seg[2]) {
+        if (method === 'GET') {
+          const start = url.searchParams.get('start') || dateStr(new Date());
+          const end   = url.searchParams.get('end')   || dateStr(new Date(Date.now() + 86400000 * 30));
 
-      return json({ answer, entries: referenced });
+          // Fetch base events (not exceptions) that could overlap range
+          const { results: baseEvents } = await env.DB.prepare(
+            `SELECT * FROM calendar_events
+             WHERE parent_event_id IS NULL AND is_deleted = 0
+             AND (
+               (recurrence_type = 'NONE' AND date(start_time) >= ? AND date(start_time) <= ?)
+               OR recurrence_type != 'NONE'
+             )
+             ORDER BY start_time ASC`
+          ).bind(start, end).all();
+
+          // Fetch exceptions in range
+          const { results: exceptions } = await env.DB.prepare(
+            `SELECT * FROM calendar_events WHERE parent_event_id IS NOT NULL AND exception_date >= ? AND exception_date <= ?`
+          ).bind(start, end).all();
+
+          const exceptionMap = {};
+          for (const ex of exceptions) {
+            exceptionMap[`${ex.parent_event_id}_${ex.exception_date}`] = ex;
+          }
+
+          const allEvents = [];
+          for (const ev of baseEvents) {
+            if (ev.recurrence_type === 'NONE') {
+              allEvents.push(ev);
+            } else {
+              allEvents.push(...generateRecurringInstances(ev, start, end, exceptionMap));
+            }
+          }
+
+          allEvents.sort((a, b) => new Date(a.start_time) - new Date(b.start_time));
+          return json({ events: allEvents });
+        }
+
+        if (method === 'POST') {
+          const body = await request.json();
+          const id = crypto.randomUUID();
+          const event = await env.DB.prepare(
+            `INSERT INTO calendar_events (id,title,description,start_time,end_time,color,is_important,location,recurrence_type,recurrence_end)
+             VALUES (?,?,?,?,?,?,?,?,?,?) RETURNING *`
+          ).bind(
+            id, body.title, body.description || '', body.startTime, body.endTime || null,
+            body.color || '#6366F1', body.isImportant ? 1 : 0, body.location || '',
+            body.recurrenceType || 'NONE', body.recurrenceEnd || null
+          ).first();
+          return json({ event }, 201);
+        }
+      }
+
+      if (seg[1] === 'events' && seg[2] && seg[3] === 'notes') {
+        const eventId = seg[2];
+
+        if (method === 'GET') {
+          const { results } = await env.DB.prepare(
+            `SELECT * FROM notes WHERE event_id = ? ORDER BY created_at ASC`
+          ).bind(eventId).all();
+          return json({ notes: results });
+        }
+
+        if (method === 'POST') {
+          const body = await request.json();
+          const id = crypto.randomUUID();
+          const note = await env.DB.prepare(
+            `INSERT INTO notes (id, title, content, event_id) VALUES (?,?,?,?) RETURNING *`
+          ).bind(id, body.title || 'Meeting Notes', body.content || '', eventId).first();
+          return json({ note }, 201);
+        }
+      }
+
+      if (seg[1] === 'events' && seg[2] && !seg[3]) {
+        const id = seg[2];
+
+        if (method === 'GET') {
+          const event = await env.DB.prepare('SELECT * FROM calendar_events WHERE id = ?').bind(id).first();
+          return event ? json({ event }) : json({ error: 'Not found' }, 404);
+        }
+
+        if (method === 'PATCH') {
+          const body = await request.json();
+          const deleteAll = url.searchParams.get('all') === 'true';
+
+          // If editing a generated recurring instance → create exception record
+          if (body._instanceDate && !deleteAll) {
+            const parentId = body.parentEventId || id;
+            const excId = crypto.randomUUID();
+            const original = await env.DB.prepare('SELECT * FROM calendar_events WHERE id = ?').bind(parentId).first();
+            if (!original) return json({ error: 'Not found' }, 404);
+
+            // Build new start_time preserving time but updating to instance date
+            const origStart = new Date(body.startTime || original.start_time);
+            const event = await env.DB.prepare(
+              `INSERT INTO calendar_events
+                (id, title, description, start_time, end_time, color, is_important, location, recurrence_type, parent_event_id, exception_date)
+               VALUES (?,?,?,?,?,?,?,?,'NONE',?,?) RETURNING *`
+            ).bind(
+              excId, body.title || original.title, body.description ?? original.description,
+              body.startTime || original.start_time, body.endTime ?? original.end_time,
+              body.color || original.color, body.isImportant !== undefined ? (body.isImportant ? 1 : 0) : original.is_important,
+              body.location ?? original.location, parentId, body._instanceDate
+            ).first();
+            return json({ event }, 201);
+          }
+
+          // Otherwise update base event
+          const allowed = { title: body.title, description: body.description, start_time: body.startTime, end_time: body.endTime, color: body.color, is_important: body.isImportant !== undefined ? (body.isImportant ? 1 : 0) : undefined, location: body.location, recurrence_type: body.recurrenceType, recurrence_end: body.recurrenceEnd };
+          const sets = []; const p = [];
+          for (const [k, v] of Object.entries(allowed)) {
+            if (v !== undefined) { sets.push(`${k} = ?`); p.push(v === '' ? null : v); }
+          }
+          if (!sets.length) return json({ error: 'Nothing to update' }, 400);
+          sets.push("updated_at = datetime('now')");
+          p.push(id);
+          const event = await env.DB.prepare(`UPDATE calendar_events SET ${sets.join(', ')} WHERE id = ? RETURNING *`).bind(...p).first();
+          return event ? json({ event }) : json({ error: 'Not found' }, 404);
+        }
+
+        if (method === 'DELETE') {
+          const deleteAll = url.searchParams.get('all') === 'true';
+          const instanceDate = url.searchParams.get('instanceDate');
+
+          if (instanceDate) {
+            // Soft-delete this specific instance by creating a deleted exception
+            const event = await env.DB.prepare('SELECT * FROM calendar_events WHERE id = ?').bind(id).first();
+            if (!event) return json({ error: 'Not found' }, 404);
+            const excId = crypto.randomUUID();
+            await env.DB.prepare(
+              `INSERT INTO calendar_events (id, title, description, start_time, color, recurrence_type, parent_event_id, exception_date, is_deleted)
+               VALUES (?,?,?,?,?,?,?,?,1)`
+            ).bind(excId, event.title, '', event.start_time, event.color, 'NONE', id, instanceDate).run();
+            return json({ ok: true });
+          }
+
+          if (deleteAll) {
+            // Delete entire series + all exceptions
+            await env.DB.prepare('DELETE FROM calendar_events WHERE id = ? OR parent_event_id = ?').bind(id, id).run();
+          } else {
+            await env.DB.prepare('DELETE FROM calendar_events WHERE id = ?').bind(id).run();
+          }
+          return json({ ok: true });
+        }
+      }
+
+      // ──────────────────────────────
+      // NOTES (standalone)
+      // ──────────────────────────────
+      if (seg[1] === 'notes' && !seg[2]) {
+        if (method === 'GET') {
+          const search = url.searchParams.get('search');
+          let q = `SELECT * FROM notes WHERE event_id IS NULL`;
+          const p = [];
+          if (search) { q += ` AND (title LIKE ? OR content LIKE ?)`; const s = `%${search}%`; p.push(s, s); }
+          q += ' ORDER BY updated_at DESC';
+          const { results } = await env.DB.prepare(q).bind(...p).all();
+          return json({ notes: results });
+        }
+
+        if (method === 'POST') {
+          const body = await request.json();
+          const id = crypto.randomUUID();
+          const note = await env.DB.prepare(
+            `INSERT INTO notes (id, title, content) VALUES (?,?,?) RETURNING *`
+          ).bind(id, body.title || 'Untitled', body.content || '').first();
+          return json({ note }, 201);
+        }
+      }
+
+      if (seg[1] === 'notes' && seg[2]) {
+        const id = seg[2];
+
+        if (method === 'PATCH') {
+          const body = await request.json();
+          const sets = []; const p = [];
+          if (body.title   !== undefined) { sets.push('title = ?');   p.push(body.title); }
+          if (body.content !== undefined) { sets.push('content = ?'); p.push(body.content); }
+          if (!sets.length) return json({ error: 'Nothing to update' }, 400);
+          sets.push("updated_at = datetime('now')");
+          p.push(id);
+          const note = await env.DB.prepare(`UPDATE notes SET ${sets.join(', ')} WHERE id = ? RETURNING *`).bind(...p).first();
+          return note ? json({ note }) : json({ error: 'Not found' }, 404);
+        }
+
+        if (method === 'DELETE') {
+          await env.DB.prepare('DELETE FROM notes WHERE id = ?').bind(id).run();
+          return json({ ok: true });
+        }
+      }
+
+      // ──────────────────────────────
+      // AI CHAT
+      // ──────────────────────────────
+      if (seg[1] === 'chat' && method === 'POST') {
+        const body = await request.json();
+        const { message, mode } = body;
+        const today = new Date().toISOString().split('T')[0];
+
+        if (mode === 'transcript') {
+          const prompt = `You are Cerebro, a personal assistant AI. Analyze this meeting transcript or text and extract structured information.
+
+Text to analyze:
+"${message}"
+
+Return ONLY valid JSON (no markdown, no explanation):
+{
+  "type": "transcript_analysis",
+  "summary": "2-3 sentence summary",
+  "keyPoints": ["point1", "point2"],
+  "tasks": [{"title": "...", "description": "...", "priority": "NORMAL"}],
+  "events": [{"title": "...", "startTime": "...", "description": "..."}]
+}
+Priority options: URGENT, HIGH, NORMAL, BACKLOG. Today is ${today}.`;
+
+          const aiRes = await env.AI.run('@cf/meta/llama-3.1-8b-instruct', {
+            messages: [{ role: 'user', content: prompt }],
+            max_tokens: 1024,
+          });
+
+          let data;
+          try {
+            const text = aiRes.response.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
+            data = JSON.parse(text);
+          } catch (e) {
+            data = { type: 'transcript_analysis', summary: aiRes.response, keyPoints: [], tasks: [], events: [] };
+          }
+          return json(data);
+        }
+
+        // Default: context-aware chat
+        const [{ results: tasks }, { results: todayEvents }, { results: recentNotes }] = await Promise.all([
+          env.DB.prepare(`SELECT id, title, priority, completed, due_date FROM tasks ORDER BY created_at DESC LIMIT 20`).all(),
+          env.DB.prepare(`SELECT id, title, start_time, end_time FROM calendar_events WHERE date(start_time) = ? AND is_deleted = 0 ORDER BY start_time`).bind(today).all(),
+          env.DB.prepare(`SELECT id, title, content FROM notes WHERE event_id IS NULL ORDER BY updated_at DESC LIMIT 10`).all(),
+        ]);
+
+        const context = `
+TASKS (${tasks.length}):
+${tasks.map(t => `- [${t.completed ? 'done' : 'open'}] ${t.title} (${t.priority})${t.due_date ? ` due ${t.due_date}` : ''}`).join('\n') || 'No tasks'}
+
+TODAY'S EVENTS (${todayEvents.length}):
+${todayEvents.map(e => `- ${e.title} ${e.start_time ? `at ${e.start_time}` : ''}`).join('\n') || 'No events today'}
+
+RECENT NOTES (${recentNotes.length}):
+${recentNotes.map(n => `- ${n.title}: ${n.content?.slice(0, 100)}`).join('\n') || 'No notes'}`;
+
+        const aiRes = await env.AI.run('@cf/meta/llama-3.1-8b-instruct', {
+          messages: [
+            { role: 'system', content: `You are Cerebro, a smart personal assistant. Today is ${today}. Here is the user's current data:\n${context}\n\nAnswer questions helpfully and concisely. If you reference a specific task or event, mention its name.` },
+            { role: 'user', content: message },
+          ],
+          max_tokens: 512,
+        });
+
+        return json({ type: 'chat', message: aiRes.response.trim() });
+      }
+
+      return json({ error: 'Not found' }, 404);
+
+    } catch (e) {
+      return json({ error: e.message }, 500);
     }
-
-    return json({ error: 'Not found' }, 404);
   },
 };
