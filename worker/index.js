@@ -415,18 +415,34 @@ Priority options: URGENT, HIGH, NORMAL, BACKLOG. Today is ${today}.`;
         }
 
         // Default: context-aware chat
-        const [{ results: tasks }, { results: todayEvents }, { results: recentNotes }] = await Promise.all([
-          env.DB.prepare(`SELECT id, title, priority, completed, due_date FROM tasks ORDER BY created_at DESC LIMIT 20`).all(),
-          env.DB.prepare(`SELECT id, title, start_time, end_time FROM calendar_events WHERE date(start_time) = ? AND is_deleted = 0 ORDER BY start_time`).bind(today).all(),
+        // Fetch events from 30 days ago through 90 days ahead so the AI sees past and future events
+        const pastDate   = new Date(Date.now() - 30  * 86400000).toISOString().split('T')[0];
+        const futureDate = new Date(Date.now() + 90  * 86400000).toISOString().split('T')[0];
+
+        const [{ results: tasks }, { results: calEvents }, { results: recentNotes }] = await Promise.all([
+          env.DB.prepare(`SELECT id, title, priority, completed, due_date FROM tasks ORDER BY created_at DESC LIMIT 30`).all(),
+          env.DB.prepare(
+            `SELECT id, title, start_time, end_time, recurrence_type FROM calendar_events
+             WHERE is_deleted = 0 AND parent_event_id IS NULL
+             AND (date(start_time) >= ? OR recurrence_type != 'NONE')
+             AND (date(start_time) <= ? OR recurrence_type != 'NONE')
+             ORDER BY start_time ASC LIMIT 50`
+          ).bind(pastDate, futureDate).all(),
           env.DB.prepare(`SELECT id, title, content FROM notes WHERE event_id IS NULL ORDER BY updated_at DESC LIMIT 10`).all(),
         ]);
 
         const context = `
+Today is ${today}.
+
 TASKS (${tasks.length}):
 ${tasks.map(t => `- [${t.completed ? 'done' : 'open'}] ${t.title} (${t.priority})${t.due_date ? ` due ${t.due_date}` : ''}`).join('\n') || 'No tasks'}
 
-TODAY'S EVENTS (${todayEvents.length}):
-${todayEvents.map(e => `- ${e.title} ${e.start_time ? `at ${e.start_time}` : ''}`).join('\n') || 'No events today'}
+CALENDAR EVENTS — past 30 days through next 90 days (${calEvents.length}):
+${calEvents.map(e => {
+  const dt = e.start_time ? new Date(e.start_time).toLocaleString('en-US', { weekday:'short', month:'short', day:'numeric', hour:'numeric', minute:'2-digit' }) : 'no time';
+  const recur = e.recurrence_type !== 'NONE' ? ` [repeats ${e.recurrence_type.toLowerCase()}]` : '';
+  return `- ${e.title} on ${dt}${recur}`;
+}).join('\n') || 'No events'}
 
 RECENT NOTES (${recentNotes.length}):
 ${recentNotes.map(n => `- ${n.title}: ${n.content?.slice(0, 100)}`).join('\n') || 'No notes'}`;
