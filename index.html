@@ -12,8 +12,8 @@
 <div id="app">
   <header>
     <span class="logo">Cerebro</span>
-    <nav>
-      <button class="active" data-view="inbox">Inbox</button>
+    <nav id="desktop-nav">
+      <button class="active" data-view="inbox">Home</button>
       <button data-view="tasks">Tasks</button>
       <button data-view="notes">Notes</button>
       <button data-view="bookmarks">Bookmarks</button>
@@ -23,6 +23,7 @@
       <input type="text" id="search-input" placeholder="Ask anything… (Enter)" />
       <span class="search-icon">⌕</span>
     </div>
+    <button id="mobile-search-btn" aria-label="Search">⌕</button>
   </header>
 
   <main>
@@ -48,10 +49,10 @@
       <div id="search-refs" class="search-refs"></div>
     </div>
 
-    <!-- Inbox view -->
+    <!-- Home view -->
     <section id="inbox-section">
       <div class="view-header">
-        <span class="view-title">Inbox</span>
+        <span class="view-title">Home</span>
       </div>
       <div id="inbox-list" class="entries-list"></div>
     </section>
@@ -96,6 +97,38 @@
       <div class="cal-grid" id="cal-grid"></div>
     </section>
   </main>
+</div>
+
+<!-- Mobile bottom nav -->
+<nav id="mobile-nav">
+  <button class="active" data-view="inbox">
+    <span class="mnav-icon">⌂</span>
+    <span class="mnav-label">Home</span>
+  </button>
+  <button data-view="tasks">
+    <span class="mnav-icon">☑</span>
+    <span class="mnav-label">Tasks</span>
+  </button>
+  <button data-view="notes">
+    <span class="mnav-icon">📝</span>
+    <span class="mnav-label">Notes</span>
+  </button>
+  <button data-view="bookmarks">
+    <span class="mnav-icon">🔖</span>
+    <span class="mnav-label">Bookmarks</span>
+  </button>
+  <button data-view="calendar">
+    <span class="mnav-icon">📅</span>
+    <span class="mnav-label">Calendar</span>
+  </button>
+</nav>
+
+<!-- Mobile search overlay -->
+<div id="mobile-search-overlay">
+  <div class="mobile-search-wrap">
+    <input type="text" id="mobile-search-input" placeholder="Ask anything…" />
+    <button id="mobile-search-close">✕</button>
+  </div>
 </div>
 
 <div id="toast"></div>

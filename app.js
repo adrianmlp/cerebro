@@ -273,8 +273,8 @@ async function loadCalendar() {
 function setView(name) {
   currentView = name;
 
-  // Update nav buttons
-  document.querySelectorAll('nav button').forEach(b => {
+  // Update nav buttons (desktop + mobile)
+  document.querySelectorAll('#desktop-nav button, #mobile-nav button').forEach(b => {
     b.classList.toggle('active', b.dataset.view === name);
   });
 
@@ -345,9 +345,36 @@ document.addEventListener('DOMContentLoaded', () => {
   });
   document.getElementById('capture-btn').addEventListener('click', capture);
 
-  // Nav
-  document.querySelectorAll('nav button').forEach(b => {
+  // Nav (desktop + mobile)
+  document.querySelectorAll('#desktop-nav button, #mobile-nav button').forEach(b => {
     b.addEventListener('click', () => setView(b.dataset.view));
+  });
+
+  // Mobile search
+  document.getElementById('mobile-search-btn')?.addEventListener('click', () => {
+    const overlay = document.getElementById('mobile-search-overlay');
+    overlay.classList.add('open');
+    document.getElementById('mobile-search-input').focus();
+  });
+
+  document.getElementById('mobile-search-close')?.addEventListener('click', () => {
+    document.getElementById('mobile-search-overlay').classList.remove('open');
+    document.getElementById('mobile-search-input').value = '';
+    document.getElementById('search-panel').classList.remove('visible');
+  });
+
+  let mobileSearchTimeout;
+  document.getElementById('mobile-search-input')?.addEventListener('input', e => {
+    clearTimeout(mobileSearchTimeout);
+    mobileSearchTimeout = setTimeout(() => runSearch(e.target.value), 600);
+  });
+
+  document.getElementById('mobile-search-input')?.addEventListener('keydown', e => {
+    if (e.key === 'Enter') runSearch(e.target.value);
+    if (e.key === 'Escape') {
+      document.getElementById('mobile-search-overlay').classList.remove('open');
+      document.getElementById('search-panel').classList.remove('visible');
+    }
   });
 
   // Task filter buttons
