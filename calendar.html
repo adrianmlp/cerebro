@@ -48,6 +48,18 @@
 
 </main>
 
+<!-- Day Detail Modal (opens when clicking a month cell) -->
+<div class="modal-backdrop" id="day-detail-modal">
+  <div class="modal" style="max-width:580px">
+    <div class="modal-header">
+      <div class="modal-title" id="day-modal-title"></div>
+      <button class="btn btn-primary btn-sm" id="day-add-event-btn">+ Add Event</button>
+      <button class="btn-icon" onclick="closeDayModal()" style="margin-left:4px">✕</button>
+    </div>
+    <div class="day-modal-body" id="day-modal-body"></div>
+  </div>
+</div>
+
 <!-- Event Modal -->
 <div class="modal-backdrop" id="event-modal">
   <div class="modal" style="max-width:540px">

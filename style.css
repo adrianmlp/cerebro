@@ -1019,6 +1019,90 @@ body {
 }
 
 /* ─────────────────────────────
+   DAY DETAIL MODAL
+───────────────────────────── */
+.day-modal-body {
+  overflow-y: auto;
+  max-height: calc(80vh - 64px);
+  padding: 0;
+}
+
+.day-hour-row {
+  display: flex;
+  align-items: stretch;
+  min-height: 52px;
+  border-bottom: 1px solid var(--border);
+}
+
+.day-hour-row:last-child { border-bottom: none; }
+
+.day-hour-label {
+  width: 64px;
+  flex-shrink: 0;
+  padding: 8px 10px 0;
+  font-size: 11px;
+  font-family: var(--font-mono);
+  color: var(--text-3);
+  text-align: right;
+  border-right: 1px solid var(--border);
+  background: rgba(255,255,255,0.01);
+}
+
+.day-hour-slot {
+  flex: 1;
+  padding: 6px 10px;
+  cursor: pointer;
+  transition: background 0.1s;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-height: 52px;
+}
+
+.day-hour-slot:hover { background: rgba(99,102,241,0.05); }
+
+.day-hour-slot:hover::after {
+  content: '+ Add';
+  font-size: 11px;
+  color: var(--indigo);
+  opacity: 0.7;
+  align-self: flex-end;
+  margin-top: auto;
+}
+
+.day-event-chip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 10px;
+  border-radius: 6px;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: filter 0.15s, transform 0.1s;
+  border-left: 3px solid rgba(255,255,255,0.4);
+  width: 100%;
+}
+
+.day-event-chip:hover { filter: brightness(1.15); transform: translateX(2px); }
+
+.day-event-chip-time {
+  font-size: 10px;
+  font-family: var(--font-mono);
+  opacity: 0.85;
+  white-space: nowrap;
+}
+
+.day-all-day-banner {
+  padding: 6px 12px;
+  background: rgba(99,102,241,0.08);
+  border-bottom: 1px solid var(--border);
+  font-size: 12px;
+  color: var(--text-2);
+}
+
+/* ─────────────────────────────
    CONTEXT MENU (recurring)
 ───────────────────────────── */
 .context-menu {

@@ -13,6 +13,7 @@ let editingEventId = null;
 let notesEventId = null;
 let notesNoteId = null;
 let notesSaveTimer = null;
+let dayModalDate = null; // date string for currently-open day detail modal
 
 // ── Color picker ──
 function buildColorPicker() {
@@ -111,6 +112,88 @@ document.getElementById('event-save-btn').addEventListener('click', async () => 
   } catch (e) { toast(e.message, 'error'); }
 });
 
+// ── Day Detail Modal ──
+function openDayModal(dateStr) {
+  dayModalDate = dateStr;
+  const d = new Date(dateStr + 'T12:00:00');
+  document.getElementById('day-modal-title').textContent =
+    d.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
+  refreshDayModal();
+  document.getElementById('day-detail-modal').classList.add('open');
+}
+
+window.closeDayModal = function() {
+  document.getElementById('day-detail-modal').classList.remove('open');
+  dayModalDate = null;
+};
+
+function refreshDayModal() {
+  if (!dayModalDate) return;
+  const dayEvents = events.filter(e => e.start_time?.startsWith(dayModalDate));
+  const body = document.getElementById('day-modal-body');
+
+  // All-day / no-time events
+  const allDay = dayEvents.filter(e => !e.start_time || e.start_time.endsWith('T00:00:00'));
+  let html = '';
+  if (allDay.length) {
+    html += `<div class="day-all-day-banner">All day: ${allDay.map(e=>`<span style="color:${e.color}">${e.title}</span>`).join(', ')}</div>`;
+  }
+
+  // Hour blocks 7am – 10pm
+  const HOURS = Array.from({length: 16}, (_, i) => i + 7);
+  html += HOURS.map(h => {
+    const label = h === 12 ? '12 PM' : h < 12 ? `${h} AM` : `${h - 12} PM`;
+    const slotEvts = dayEvents.filter(e => {
+      if (!e.start_time || e.start_time.endsWith('T00:00:00')) return false;
+      return new Date(e.start_time).getHours() === h;
+    });
+
+    const chips = slotEvts.map(e => {
+      const startLabel = formatTime(e.start_time);
+      const endLabel   = e.end_time ? ` – ${formatTime(e.end_time)}` : '';
+      return `<div class="day-event-chip" style="background:${e.color}"
+        data-day-event-id="${e.id}" data-day-instance="${e._instanceDate || ''}">
+        <span class="day-event-chip-time">${startLabel}${endLabel}</span>
+        <span style="flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${e.title}</span>
+        ${e.recurrence_type !== 'NONE' ? '<span style="opacity:0.7;font-size:10px">↻</span>' : ''}
+      </div>`;
+    }).join('');
+
+    return `<div class="day-hour-row">
+      <div class="day-hour-label">${label}</div>
+      <div class="day-hour-slot" data-slot-hour="${h}">${chips}</div>
+    </div>`;
+  }).join('');
+
+  body.innerHTML = html;
+
+  // Attach slot clicks (empty area → add event at that hour)
+  body.querySelectorAll('.day-hour-slot').forEach(slot => {
+    slot.addEventListener('click', e => {
+      if (e.target.closest('[data-day-event-id]')) return;
+      const h = String(slot.dataset.slotHour).padStart(2, '0');
+      openEventModal({ date: dayModalDate, startTime: `${h}:00` });
+    });
+  });
+
+  // Attach event chip clicks → show detail
+  body.querySelectorAll('[data-day-event-id]').forEach(chip => {
+    chip.addEventListener('click', e => {
+      e.stopPropagation();
+      const id = chip.dataset.dayEventId;
+      const inst = chip.dataset.dayInstance;
+      const ev = events.find(ev => ev.id === id && (ev._instanceDate || '') === inst)
+               || events.find(ev => ev.id === id);
+      if (ev) showEventDetail(ev);
+    });
+  });
+}
+
+// "+ Add Event" button inside day modal
+document.getElementById('day-add-event-btn').addEventListener('click', () => {
+  openEventModal({ date: dayModalDate });
+});
+
 // ── Load events ──
 async function loadEvents() {
   const { start, end } = getRange();
@@ -118,6 +201,8 @@ async function loadEvents() {
     const { events: evts } = await apiFetch(`/api/events?start=${start}&end=${end}`);
     events = evts;
     render();
+    // If day modal is open, refresh its content with updated events
+    if (dayModalDate) refreshDayModal();
   } catch (e) { toast(e.message, 'error'); }
 }
 
@@ -262,13 +347,21 @@ function renderWeekDay(mode) {
 
 // ── Click handlers ──
 function attachCellClicks() {
-  // Empty cell → add event
-  document.querySelectorAll('.cal-cell[data-date], .time-slot[data-date]').forEach(cell => {
+  // Month cell → open day detail modal
+  document.querySelectorAll('.cal-cell[data-date]').forEach(cell => {
+    cell.addEventListener('click', e => {
+      if (e.target.closest('[data-event-id]')) return;
+      openDayModal(cell.dataset.date);
+    });
+  });
+
+  // Week/Day time slots → add event directly
+  document.querySelectorAll('.time-slot[data-date]').forEach(cell => {
     cell.addEventListener('click', e => {
       if (e.target.closest('[data-event-id]')) return;
       const date = cell.dataset.date;
       const hour = cell.dataset.hour;
-      const startTime = hour ? String(hour).padStart(2,'0') + ':00' : '';
+      const startTime = hour ? String(hour).padStart(2, '0') + ':00' : '';
       openEventModal({ date, startTime });
     });
   });
