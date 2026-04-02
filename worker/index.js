@@ -447,15 +447,69 @@ ${calEvents.map(e => {
 RECENT NOTES (${recentNotes.length}):
 ${recentNotes.map(n => `- ${n.title}: ${n.content?.slice(0, 100)}`).join('\n') || 'No notes'}`;
 
+        const systemPrompt = `You are Cerebro, a smart personal assistant. Today is ${today}.
+
+Here is the user's current data:
+${context}
+
+You can answer questions AND perform actions. When the user asks you to add/create a task or event, you MUST return valid JSON (no markdown) in this exact shape:
+{
+  "message": "Friendly confirmation message to show the user",
+  "action": {
+    "type": "create_task",
+    "data": { "title": "...", "description": "...", "priority": "NORMAL", "dueDate": "YYYY-MM-DD or null" }
+  }
+}
+OR for events:
+{
+  "message": "Friendly confirmation message",
+  "action": {
+    "type": "create_event",
+    "data": { "title": "...", "startTime": "YYYY-MM-DDTHH:MM:00", "endTime": "YYYY-MM-DDTHH:MM:00 or null", "description": "" }
+  }
+}
+
+Priority options: URGENT, HIGH, NORMAL, BACKLOG.
+Resolve relative dates (tomorrow, next Monday, etc.) to absolute YYYY-MM-DD based on today being ${today}.
+
+For all other responses (questions, lookups, general chat) return plain text — no JSON.`;
+
         const aiRes = await env.AI.run('@cf/meta/llama-3.1-8b-instruct', {
           messages: [
-            { role: 'system', content: `You are Cerebro, a smart personal assistant. Today is ${today}. Here is the user's current data:\n${context}\n\nAnswer questions helpfully and concisely. If you reference a specific task or event, mention its name.` },
+            { role: 'system', content: systemPrompt },
             { role: 'user', content: message },
           ],
           max_tokens: 512,
         });
 
-        return json({ type: 'chat', message: aiRes.response.trim() });
+        const raw = aiRes.response.trim();
+
+        // Try to parse as an action response
+        let parsed = null;
+        try {
+          const clean = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
+          parsed = JSON.parse(clean);
+        } catch (_) {}
+
+        if (parsed?.action?.type === 'create_task') {
+          const d = parsed.action.data;
+          const id = crypto.randomUUID();
+          await env.DB.prepare(
+            `INSERT INTO tasks (id, title, description, priority, due_date) VALUES (?,?,?,?,?)`
+          ).bind(id, d.title, d.description || '', d.priority || 'NORMAL', d.dueDate || null).run();
+          return json({ type: 'chat', message: parsed.message || `Task "${d.title}" added.`, action: { type: 'create_task' } });
+        }
+
+        if (parsed?.action?.type === 'create_event') {
+          const d = parsed.action.data;
+          const id = crypto.randomUUID();
+          await env.DB.prepare(
+            `INSERT INTO calendar_events (id, title, description, start_time, end_time, color) VALUES (?,?,?,?,?,?)`
+          ).bind(id, d.title, d.description || '', d.startTime, d.endTime || null, '#6366F1').run();
+          return json({ type: 'chat', message: parsed.message || `Event "${d.title}" added.`, action: { type: 'create_event' } });
+        }
+
+        return json({ type: 'chat', message: raw });
       }
 
       return json({ error: 'Not found' }, 404);

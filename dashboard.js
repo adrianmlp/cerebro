@@ -172,6 +172,9 @@ async function sendChat() {
       renderTranscriptCards(data);
     } else {
       appendMsg('assistant', data.message);
+      // If the AI performed a write action, refresh the relevant card
+      if (data.action?.type === 'create_task')  loadTasks();
+      if (data.action?.type === 'create_event') loadSchedule();
     }
   } catch (e) {
     loadingDiv.remove();
