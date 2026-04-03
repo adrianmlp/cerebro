@@ -1026,15 +1026,16 @@ ${calUpcoming.length ? `PERSONAL EVENTS:\n${calUpcoming.map(e=>`- ${tr(e.title)}
 ${workUpcoming.length ? `WORK EVENTS:\n${workUpcoming.map(e=>`- ${tr(e.title)} — ${fmtEvent(e.start_time)}`).join('\n')}` : ''}
 NOTES: ${recentNotes.map(n=>`${tr(n.title)}: ${(n.content||'').slice(0,60)}`).join(' | ') || 'none'}`;
 
-        const systemPrompt = `You are Cerebro, a concise personal assistant. ${context}
-
+        const systemPrompt = `You are Cerebro, a concise personal assistant.
+${context}
+${!hasMatches ? `\nSearch ALL events above carefully to answer the user's question.` : ''}
 Reply in 1-3 sentences. For create task/event return JSON: {"message":"...","action":{"type":"create_task","data":{"title":"...","priority":"NORMAL","dueDate":null}}} or {"message":"...","action":{"type":"create_event","data":{"title":"...","startTime":"YYYY-MM-DDTHH:MM:00","endTime":null}}}. Otherwise plain text only.`;
 
         const timeout = new Promise((_, reject) =>
           setTimeout(() => reject(new Error('AI response timed out — please try again')), 28000)
         );
         const aiRes = await Promise.race([
-          env.AI.run('@cf/meta/llama-3.2-3b-instruct', {
+          env.AI.run('@cf/meta/llama-3.1-8b-instruct', {
             messages: [
               { role: 'system', content: systemPrompt },
               { role: 'user', content: message },
