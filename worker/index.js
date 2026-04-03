@@ -997,7 +997,7 @@ Priority options: URGENT, HIGH, NORMAL, BACKLOG. Today is ${today}.`;
           sqlMatched.sort((a,b) => (a.start_time||'').localeCompare(b.start_time||''));
         }
 
-        const [{ results: tasks }, { results: calEvents }, { results: recentNotes }] = await Promise.all([
+        const [{ results: tasks }, { results: calEvents }, { results: recentNotes }, { results: outlookBase }] = await Promise.all([
           env.DB.prepare(`SELECT title, priority, completed, due_date FROM tasks ORDER BY created_at DESC LIMIT 15`).all(),
           env.DB.prepare(
             `SELECT title, start_time FROM calendar_events
@@ -1005,6 +1005,8 @@ Priority options: URGENT, HIGH, NORMAL, BACKLOG. Today is ${today}.`;
              ORDER BY start_time ASC LIMIT 10`
           ).bind(today, futureDate).all(),
           env.DB.prepare(`SELECT title, content FROM notes WHERE event_id IS NULL ORDER BY updated_at DESC LIMIT 5`).all(),
+          // Fallback: all base event titles so AI can fuzzy-match by context
+          env.DB.prepare(`SELECT uid, title, start_time, recurrence_rule, event_tzid, local_start FROM outlook_events LIMIT 60`).all(),
         ]);
 
         const tr = s => (s || '').length > 60 ? s.slice(0, 60) + '…' : (s || '');
@@ -1019,10 +1021,26 @@ Priority options: URGENT, HIGH, NORMAL, BACKLOG. Today is ${today}.`;
         const todayLocal = new Date().toLocaleDateString('en-US', { timeZone: tz, weekday:'long', year:'numeric', month:'long', day:'numeric' });
         const matchedUpcoming = sqlMatched.filter(e => (e.start_time||'') >= todayPrefix).slice(0, 8);
 
-        // If SQL search found matches, skip full calendar dump — saves tokens
+        // If SQL search found no matches, generate upcoming instances from all base events
         const hasMatches = matchedUpcoming.length > 0;
-        const calUpcoming  = hasMatches ? [] : calEvents.slice(0, 10);
-        const workUpcoming = hasMatches ? [] : [];
+        const calUpcoming = calEvents.slice(0, 10);
+        let workUpcoming = [];
+        if (!hasMatches) {
+          for (const base of outlookBase) {
+            if (base.recurrence_rule) {
+              const rr = parseRRule(base.recurrence_rule);
+              if (rr) {
+                const instances = generateOutlookInstances(base, rr, today, futureDate);
+                workUpcoming.push(...instances.slice(0, 2));
+              }
+            } else if (base.start_time >= todayPrefix) {
+              workUpcoming.push(base);
+            }
+            if (workUpcoming.length >= 20) break;
+          }
+          workUpcoming.sort((a,b) => (a.start_time||'').localeCompare(b.start_time||''));
+          workUpcoming = workUpcoming.slice(0, 20);
+        }
 
         const context = `Today is ${todayLocal}. Times are in ${tzDisplay} — quote exactly, never say UTC.
 ${matchedUpcoming.length ? `\nEVENTS MATCHING QUERY:\n${matchedUpcoming.map(e => `- ${e.title} — ${fmtEvent(e.start_time)}`).join('\n')}` : ''}
