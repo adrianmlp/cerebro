@@ -138,40 +138,50 @@ function refreshDayModal() {
 
   const HOURS = Array.from({length: 16}, (_, i) => i + 7);
 
-  function chipHtml(e, isWork) {
+  function workChip(e) {
     const startLabel = formatTime(e.start_time);
     const endLabel   = e.end_time ? ` – ${formatTime(e.end_time)}` : '';
-    const color      = isWork ? '#0EA5E9' : e.color;
-    const attr       = isWork
-      ? `data-outlook-uid="${e.uid}" data-day-instance="${e._instanceDate || ''}"`
-      : `data-day-event-id="${e.id}" data-day-instance="${e._instanceDate || ''}"`;
-    return `<div class="day-event-chip" style="background:${color}" ${attr}>
+    return `<div class="day-event-chip" style="background:#0EA5E9"
+      data-outlook-uid="${e.uid}" data-day-instance="${e._instanceDate || ''}">
       <span class="day-event-chip-time">${startLabel}${endLabel}</span>
       <span style="flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${e.title}</span>
-      ${isWork ? '<span style="opacity:0.6;font-size:9px">🏢</span>' : ''}
     </div>`;
   }
 
-  let html = HOURS.map(h => {
-    const label = h === 12 ? '12 PM' : h < 12 ? `${h} AM` : `${h - 12} PM`;
-    const personalSlot = dayPersonal.filter(e => e.start_time && !e.start_time.endsWith('T00:00:00') && new Date(e.start_time).getHours() === h);
-    const workSlot     = dayWork.filter(e => e.start_time && new Date(e.start_time).getHours() === h);
-    const chips = [
-      ...workSlot.map(e => chipHtml(e, true)),
-      ...personalSlot.map(e => chipHtml(e, false)),
-    ].join('');
+  function personalChip(e) {
+    const startLabel = formatTime(e.start_time);
+    const endLabel   = e.end_time ? ` – ${formatTime(e.end_time)}` : '';
+    return `<div class="day-event-chip" style="background:${e.color}"
+      data-day-event-id="${e.id}" data-day-instance="${e._instanceDate || ''}">
+      <span class="day-event-chip-time">${startLabel}${endLabel}</span>
+      <span style="flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${e.title}</span>
+    </div>`;
+  }
+
+  // Column header
+  let html = `<div class="day-split-col-header">
+    <div></div>
+    <div class="day-split-col-label work">🏢 Work</div>
+    <div class="day-split-col-label personal">🏠 Personal</div>
+  </div>`;
+
+  html += HOURS.map(h => {
+    const label       = h === 12 ? '12 PM' : h < 12 ? `${h} AM` : `${h - 12} PM`;
+    const workSlot    = dayWork.filter(e => e.start_time && new Date(e.start_time).getHours() === h);
+    const persSlot    = dayPersonal.filter(e => e.start_time && !e.start_time.endsWith('T00:00:00') && new Date(e.start_time).getHours() === h);
 
     return `<div class="day-hour-row">
       <div class="day-hour-label">${label}</div>
-      <div class="day-hour-slot" data-slot-hour="${h}">${chips}</div>
+      <div class="day-hour-work-slot">${workSlot.map(workChip).join('')}</div>
+      <div class="day-hour-slot" data-slot-hour="${h}">${persSlot.map(personalChip).join('')}</div>
     </div>`;
   }).join('');
 
   body.innerHTML = html;
 
-  body.querySelectorAll('.day-hour-slot').forEach(slot => {
+  body.querySelectorAll('.day-hour-slot[data-slot-hour]').forEach(slot => {
     slot.addEventListener('click', e => {
-      if (e.target.closest('[data-day-event-id],[data-outlook-uid]')) return;
+      if (e.target.closest('[data-day-event-id]')) return;
       const h = String(slot.dataset.slotHour).padStart(2, '0');
       openEventModal({ date: dayModalDate, startTime: `${h}:00` });
     });

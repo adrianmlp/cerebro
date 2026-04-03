@@ -631,7 +631,8 @@ body {
 
 .cal-cell {
   background: var(--card-to);
-  min-height: 100px;
+  height: 110px;
+  overflow: hidden;
   padding: 6px;
   cursor: pointer;
   transition: background 0.15s;
@@ -1142,6 +1143,34 @@ body {
   padding: 0;
 }
 
+/* Split header row inside day modal */
+.day-split-col-header {
+  display: flex;
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--card-from);
+}
+
+.day-split-col-header > div:first-child {
+  width: 64px;
+  flex-shrink: 0;
+  border-right: 1px solid var(--border);
+}
+
+.day-split-col-label {
+  flex: 1;
+  padding: 6px 10px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+}
+
+.day-split-col-label.work     { color: #38BDF8; border-right: 1px solid var(--border); }
+.day-split-col-label.personal { color: var(--violet); }
+
 .day-hour-row {
   display: flex;
   align-items: stretch;
@@ -1163,6 +1192,18 @@ body {
   background: rgba(255,255,255,0.01);
 }
 
+/* Work slot — read-only, no hover add */
+.day-hour-work-slot {
+  flex: 1;
+  padding: 6px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-height: 52px;
+  border-right: 1px solid var(--border);
+}
+
+/* Personal slot — clickable to add */
 .day-hour-slot {
   flex: 1;
   padding: 6px 10px;
