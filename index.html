@@ -69,15 +69,19 @@
   </div>
 
   <!-- AI Chat card -->
-  <div class="card">
+  <div class="card" id="chat-card">
     <div class="card-header">
       <div class="card-icon indigo">✦</div>
       <div>
         <div class="card-title">Cerebro Chat</div>
         <div class="card-subtitle">Ask about your tasks, calendar, notes — or paste a meeting transcript</div>
       </div>
+      <div class="card-actions">
+        <button class="btn btn-ghost btn-sm" id="chat-expand-btn" title="Expand chat">⤢</button>
+      </div>
     </div>
-    <div class="card-body">
+    <!-- #chat-content is moved into the fullscreen modal on expand and back on collapse -->
+    <div id="chat-content" class="card-body">
       <div class="chat-messages" id="chat-messages">
         <div class="chat-msg assistant">
           <div class="chat-avatar">✦</div>
@@ -94,6 +98,22 @@
       <div class="chat-input-row">
         <textarea class="textarea" id="chat-input" placeholder="Ask anything or paste a meeting transcript…" rows="1"></textarea>
         <button class="btn btn-primary" id="chat-send-btn">Send</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Fullscreen Chat Modal -->
+  <div class="chat-fullscreen-backdrop" id="chat-fullscreen-modal">
+    <div class="chat-fullscreen-inner">
+      <div class="chat-fullscreen-header">
+        <div style="display:flex;align-items:center;gap:10px">
+          <div class="card-icon indigo">✦</div>
+          <span class="card-title" style="margin:0">Cerebro Chat</span>
+        </div>
+        <button class="btn-icon" id="chat-collapse-btn" title="Close">✕</button>
+      </div>
+      <div id="chat-fullscreen-body">
+        <!-- #chat-content is moved here on expand -->
       </div>
     </div>
   </div>

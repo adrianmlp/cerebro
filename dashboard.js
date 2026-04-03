@@ -252,6 +252,30 @@ chatInput.addEventListener('keydown', e => {
   setTimeout(() => { chatInput.style.height = 'auto'; chatInput.style.height = chatInput.scrollHeight + 'px'; }, 0);
 });
 
+// ── Chat expand / collapse ──
+const chatCard          = document.getElementById('chat-card');
+const chatContent       = document.getElementById('chat-content');
+const chatFullscreen    = document.getElementById('chat-fullscreen-modal');
+const chatFullscreenBody = document.getElementById('chat-fullscreen-body');
+
+function expandChat() {
+  chatFullscreenBody.appendChild(chatContent);
+  chatFullscreen.classList.add('open');
+  chatMessages.scrollTop = chatMessages.scrollHeight;
+  chatInput.focus();
+}
+
+function collapseChat() {
+  chatCard.appendChild(chatContent);
+  chatFullscreen.classList.remove('open');
+  chatMessages.scrollTop = chatMessages.scrollHeight;
+}
+
+document.getElementById('chat-expand-btn').addEventListener('click', expandChat);
+document.getElementById('chat-collapse-btn').addEventListener('click', collapseChat);
+chatFullscreen.addEventListener('click', e => { if (e.target === chatFullscreen) collapseChat(); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && chatFullscreen.classList.contains('open')) collapseChat(); });
+
 // ── Init ──
 loadTasks().catch(e => toast(e.message, 'error'));
 loadSchedule().catch(e => toast(e.message, 'error'));
