@@ -703,12 +703,15 @@ body {
   border-bottom: 1px solid var(--border);
   cursor: pointer;
   transition: background 0.1s;
+  position: relative;
+  overflow: hidden;
 }
 
 .time-slot:hover { background: rgba(99,102,241,0.06); }
 
 .time-event {
   position: absolute;
+  top: 2px;
   left: 2px;
   right: 2px;
   border-radius: 5px;
@@ -716,7 +719,9 @@ body {
   font-size: 11px;
   font-weight: 500;
   color: #fff;
+  white-space: nowrap;
   overflow: hidden;
+  text-overflow: ellipsis;
   cursor: pointer;
   z-index: 2;
 }
@@ -1195,17 +1200,20 @@ body {
 /* Work slot — read-only, no hover add */
 .day-hour-work-slot {
   flex: 1;
+  min-width: 0;
   padding: 6px 10px;
   display: flex;
   flex-direction: column;
   gap: 4px;
   min-height: 52px;
   border-right: 1px solid var(--border);
+  overflow: hidden;
 }
 
 /* Personal slot — clickable to add */
 .day-hour-slot {
   flex: 1;
+  min-width: 0;
   padding: 6px 10px;
   cursor: pointer;
   transition: background 0.1s;
@@ -1213,6 +1221,7 @@ body {
   flex-direction: column;
   gap: 4px;
   min-height: 52px;
+  overflow: hidden;
 }
 
 .day-hour-slot:hover { background: rgba(99,102,241,0.05); }
@@ -1239,6 +1248,8 @@ body {
   transition: filter 0.15s, transform 0.1s;
   border-left: 3px solid rgba(255,255,255,0.4);
   width: 100%;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .day-event-chip:hover { filter: brightness(1.15); transform: translateX(2px); }
@@ -1441,9 +1452,21 @@ body {
 }
 .work-time-event:hover { opacity: 1; filter: brightness(1.1); }
 
-/* Work slots are not clickable-to-add */
-.work-slot { cursor: default; }
+/* Work slots — same sizing as time-slot but not clickable */
+.work-slot {
+  height: 60px;
+  border-bottom: 1px solid var(--border);
+  position: relative;
+  overflow: hidden;
+  cursor: default;
+}
 .work-slot:hover { background: transparent; }
+
+/* Remove double border/radius from time grids nested inside the split wrapper */
+.cal-split-panel .cal-time-grid {
+  border: none;
+  border-radius: 0;
+}
 
 /* Work event dots in month view */
 .cal-event-dot.work-event {
