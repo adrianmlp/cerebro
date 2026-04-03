@@ -163,7 +163,10 @@ function appendMsg(role, text) {
 }
 
 function isTranscript(text) {
-  return text.length > 200 || /transcript|meeting|discussed|agenda|action item/i.test(text);
+  // Only treat as transcript if it's long AND looks like meeting notes / speaker turns
+  if (text.length < 300) return false;
+  return /transcript|action item|discussed|agreed to|follow.?up|next steps/i.test(text)
+    || /\b[A-Z][a-z]+\s*:/m.test(text);  // speaker attribution like "John:"
 }
 
 async function sendChat() {
@@ -248,7 +251,10 @@ window.confirmTranscriptItem = async function(i, item) {
 
 chatSendBtn.addEventListener('click', sendChat);
 chatInput.addEventListener('keydown', e => {
-  if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') sendChat();
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    sendChat();
+  }
   setTimeout(() => { chatInput.style.height = 'auto'; chatInput.style.height = chatInput.scrollHeight + 'px'; }, 0);
 });
 
