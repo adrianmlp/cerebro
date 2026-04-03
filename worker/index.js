@@ -433,29 +433,31 @@ async function syncOutlook(env) {
     const text   = await res.text();
     const events = parseICS(text);
 
+    // Stamp every upserted row with this sync's timestamp
+    const syncTime = new Date().toISOString();
+
     for (const ev of events) {
       await env.DB.prepare(
         `INSERT OR REPLACE INTO outlook_events
          (uid, title, description, organizer, location, start_time, end_time, is_all_day, recurrence_rule, recurrence_exceptions, synced_at)
-         VALUES (?,?,?,?,?,?,?,?,?,?,datetime('now'))`
+         VALUES (?,?,?,?,?,?,?,?,?,?,?)`
       ).bind(
         ev.uid, ev.title, ev.description, ev.organizer, ev.location,
         ev.start_time, ev.end_time, ev.is_all_day,
-        ev.recurrence_rule, ev.recurrence_exceptions
+        ev.recurrence_rule, ev.recurrence_exceptions,
+        syncTime
       ).run();
     }
 
-    // Remove events that no longer exist in Outlook (deleted upstream)
+    // Delete anything not touched in this sync = deleted from Outlook
     if (events.length > 0) {
-      const placeholders = events.map(() => '?').join(',');
-      const uids = events.map(e => e.uid);
       await env.DB.prepare(
-        `DELETE FROM outlook_events WHERE uid NOT IN (${placeholders})`
-      ).bind(...uids).run();
-      // Also clean up any hidden entries for deleted events
+        `DELETE FROM outlook_events WHERE synced_at < ?`
+      ).bind(syncTime).run();
+      // Clean up hidden entries whose source event no longer exists
       await env.DB.prepare(
-        `DELETE FROM hidden_outlook_events WHERE uid NOT IN (${placeholders})`
-      ).bind(...uids).run();
+        `DELETE FROM hidden_outlook_events WHERE uid NOT IN (SELECT uid FROM outlook_events)`
+      ).run();
     }
 
     await env.DB.prepare(
