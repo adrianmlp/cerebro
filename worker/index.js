@@ -940,46 +940,45 @@ Priority options: URGENT, HIGH, NORMAL, BACKLOG. Today is ${today}.`;
           return json(data);
         }
 
-        const pastDate   = new Date(Date.now() - 30 * 86400000).toISOString().split('T')[0];
-        const futureDate = new Date(Date.now() + 90 * 86400000).toISOString().split('T')[0];
+        // Tight date window to stay within model context limit
+        const pastDate   = new Date(Date.now() -  7 * 86400000).toISOString().split('T')[0];
+        const futureDate = new Date(Date.now() + 30 * 86400000).toISOString().split('T')[0];
 
-        const [{ results: tasks }, { results: calEvents }, { results: recentNotes }, outlookEvents] = await Promise.all([
-          env.DB.prepare(`SELECT id, title, priority, completed, due_date FROM tasks ORDER BY created_at DESC LIMIT 30`).all(),
+        const [{ results: tasks }, { results: calEvents }, { results: recentNotes }, outlookEventsRaw] = await Promise.all([
+          env.DB.prepare(`SELECT id, title, priority, completed, due_date FROM tasks ORDER BY created_at DESC LIMIT 20`).all(),
           env.DB.prepare(
-            `SELECT id, title, start_time, end_time, recurrence_type FROM calendar_events
+            `SELECT id, title, start_time, recurrence_type FROM calendar_events
              WHERE is_deleted = 0 AND parent_event_id IS NULL
-             AND (date(start_time) >= ? OR recurrence_type != 'NONE')
-             AND (date(start_time) <= ? OR recurrence_type != 'NONE')
-             ORDER BY start_time ASC LIMIT 50`
+             AND date(start_time) >= ? AND date(start_time) <= ?
+             ORDER BY start_time ASC LIMIT 20`
           ).bind(pastDate, futureDate).all(),
-          env.DB.prepare(`SELECT id, title, content FROM notes WHERE event_id IS NULL ORDER BY updated_at DESC LIMIT 10`).all(),
+          env.DB.prepare(`SELECT title, content FROM notes WHERE event_id IS NULL ORDER BY updated_at DESC LIMIT 5`).all(),
           fetchOutlookEventsInRange(env, pastDate, futureDate),
         ]);
 
+        // Cap and truncate Outlook events to keep token count low
+        const tr = s => (s || '').length > 60 ? s.slice(0, 60) + '…' : (s || '');
+        const outlookEvents = outlookEventsRaw.slice(0, 40);
+
         function fmtEvent(startIso) {
           if (!startIso) return 'no time';
-          // Format in UTC — prefix date so AI can reason about day-of-week
           const d = new Date(startIso);
-          return d.toLocaleString('en-US', { timeZone: 'UTC', weekday:'short', year:'numeric', month:'short', day:'numeric', hour:'numeric', minute:'2-digit', hour12: true }) + ' UTC';
+          return d.toLocaleString('en-US', { timeZone: 'UTC', weekday:'short', month:'short', day:'numeric', hour:'numeric', minute:'2-digit', hour12: true }) + ' UTC';
         }
 
-        const context = `
-Today is ${today} (${new Date().toLocaleString('en-US', { timeZone:'UTC', weekday:'long' })}).
+        const context = `Today is ${today} (${new Date().toLocaleString('en-US', { timeZone:'UTC', weekday:'long' })}).
 
-TASKS (${tasks.length}):
-${tasks.map(t => `- [${t.completed ? 'done' : 'open'}] ${t.title} (${t.priority})${t.due_date ? ` due ${t.due_date}` : ''}`).join('\n') || 'No tasks'}
+TASKS:
+${tasks.map(t => `- [${t.completed ? 'x' : ' '}] ${tr(t.title)} (${t.priority})${t.due_date ? ` due ${t.due_date}` : ''}`).join('\n') || 'none'}
 
-PERSONAL CALENDAR EVENTS — past 30 days through next 90 days (${calEvents.length}):
-${calEvents.map(e => {
-  const recur = e.recurrence_type !== 'NONE' ? ` [repeats ${e.recurrence_type.toLowerCase()}]` : '';
-  return `- ${e.title} on ${fmtEvent(e.start_time)}${recur}`;
-}).join('\n') || 'No personal events'}
+PERSONAL CALENDAR (past 7d – next 30d):
+${calEvents.map(e => `- ${tr(e.title)} — ${fmtEvent(e.start_time)}`).join('\n') || 'none'}
 
-WORK CALENDAR EVENTS — Outlook, past 30 days through next 90 days (${outlookEvents.length}):
-${outlookEvents.map(e => `- ${e.title}${e.organizer ? ` (org: ${e.organizer})` : ''} on ${fmtEvent(e.start_time)}${e.location ? ` @ ${e.location}` : ''}`).join('\n') || 'No work events'}
+WORK CALENDAR / OUTLOOK (past 7d – next 30d):
+${outlookEvents.map(e => `- ${tr(e.title)} — ${fmtEvent(e.start_time)}`).join('\n') || 'none'}
 
-RECENT NOTES (${recentNotes.length}):
-${recentNotes.map(n => `- ${n.title}: ${n.content?.slice(0, 100)}`).join('\n') || 'No notes'}`;
+NOTES:
+${recentNotes.map(n => `- ${tr(n.title)}: ${(n.content || '').slice(0, 80)}`).join('\n') || 'none'}`;
 
         const systemPrompt = `You are Cerebro, a smart personal assistant. Today is ${today}.
 
