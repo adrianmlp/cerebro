@@ -88,9 +88,180 @@ function unescapeICS(str) {
     .replace(/\\\\/g, '\\');
 }
 
+// Windows TZ name → IANA timezone ID
+const WIN_TO_IANA = {
+  'Dateline Standard Time': 'Etc/GMT+12',
+  'UTC-11': 'Etc/GMT+11',
+  'Hawaiian Standard Time': 'Pacific/Honolulu',
+  'Alaskan Standard Time': 'America/Anchorage',
+  'Pacific Standard Time (Mexico)': 'America/Tijuana',
+  'Pacific Standard Time': 'America/Los_Angeles',
+  'Pacific Daylight Time': 'America/Los_Angeles',
+  'US Mountain Standard Time': 'America/Phoenix',
+  'Mountain Standard Time (Mexico)': 'America/Chihuahua',
+  'Mountain Standard Time': 'America/Denver',
+  'Mountain Daylight Time': 'America/Denver',
+  'Central America Standard Time': 'America/Guatemala',
+  'Central Standard Time': 'America/Chicago',
+  'Central Daylight Time': 'America/Chicago',
+  'Central Standard Time (Mexico)': 'America/Mexico_City',
+  'Canada Central Standard Time': 'America/Regina',
+  'SA Pacific Standard Time': 'America/Bogota',
+  'Eastern Standard Time (Mexico)': 'America/Cancun',
+  'Eastern Standard Time': 'America/New_York',
+  'Eastern Daylight Time': 'America/New_York',
+  'US Eastern Standard Time': 'America/Indianapolis',
+  'Venezuela Standard Time': 'America/Caracas',
+  'Paraguay Standard Time': 'America/Asuncion',
+  'Atlantic Standard Time': 'America/Halifax',
+  'Central Brazilian Standard Time': 'America/Cuiaba',
+  'SA Western Standard Time': 'America/La_Paz',
+  'Pacific SA Standard Time': 'America/Santiago',
+  'Newfoundland Standard Time': 'America/St_Johns',
+  'E. South America Standard Time': 'America/Sao_Paulo',
+  'Argentina Standard Time': 'America/Buenos_Aires',
+  'SA Eastern Standard Time': 'America/Cayenne',
+  'Greenland Standard Time': 'America/Godthab',
+  'Montevideo Standard Time': 'America/Montevideo',
+  'Bahia Standard Time': 'America/Bahia',
+  'UTC-02': 'Etc/GMT+2',
+  'Azores Standard Time': 'Atlantic/Azores',
+  'Cape Verde Standard Time': 'Atlantic/Cape_Verde',
+  'Morocco Standard Time': 'Africa/Casablanca',
+  'UTC': 'UTC',
+  'GMT Standard Time': 'Europe/London',
+  'Greenwich Standard Time': 'Atlantic/Reykjavik',
+  'W. Europe Standard Time': 'Europe/Berlin',
+  'Central Europe Standard Time': 'Europe/Budapest',
+  'Romance Standard Time': 'Europe/Paris',
+  'Central European Standard Time': 'Europe/Warsaw',
+  'W. Central Africa Standard Time': 'Africa/Lagos',
+  'Namibia Standard Time': 'Africa/Windhoek',
+  'GTB Standard Time': 'Europe/Bucharest',
+  'Middle East Standard Time': 'Asia/Beirut',
+  'Egypt Standard Time': 'Africa/Cairo',
+  'Syria Standard Time': 'Asia/Damascus',
+  'South Africa Standard Time': 'Africa/Johannesburg',
+  'FLE Standard Time': 'Europe/Helsinki',
+  'Turkey Standard Time': 'Europe/Istanbul',
+  'Israel Standard Time': 'Asia/Jerusalem',
+  'Libya Standard Time': 'Africa/Tripoli',
+  'Jordan Standard Time': 'Asia/Amman',
+  'Arabic Standard Time': 'Asia/Baghdad',
+  'Kaliningrad Standard Time': 'Europe/Kaliningrad',
+  'Arab Standard Time': 'Asia/Riyadh',
+  'E. Africa Standard Time': 'Africa/Nairobi',
+  'Iran Standard Time': 'Asia/Tehran',
+  'Arabian Standard Time': 'Asia/Dubai',
+  'Azerbaijan Standard Time': 'Asia/Baku',
+  'Russia Time Zone 3': 'Europe/Samara',
+  'Mauritius Standard Time': 'Indian/Mauritius',
+  'Georgian Standard Time': 'Asia/Tbilisi',
+  'Caucasus Standard Time': 'Asia/Yerevan',
+  'Afghanistan Standard Time': 'Asia/Kabul',
+  'West Asia Standard Time': 'Asia/Tashkent',
+  'Pakistan Standard Time': 'Asia/Karachi',
+  'India Standard Time': 'Asia/Calcutta',
+  'Sri Lanka Standard Time': 'Asia/Colombo',
+  'Nepal Standard Time': 'Asia/Katmandu',
+  'Central Asia Standard Time': 'Asia/Almaty',
+  'Bangladesh Standard Time': 'Asia/Dhaka',
+  'Ekaterinburg Standard Time': 'Asia/Yekaterinburg',
+  'Myanmar Standard Time': 'Asia/Rangoon',
+  'SE Asia Standard Time': 'Asia/Bangkok',
+  'N. Central Asia Standard Time': 'Asia/Novosibirsk',
+  'China Standard Time': 'Asia/Shanghai',
+  'North Asia Standard Time': 'Asia/Krasnoyarsk',
+  'Singapore Standard Time': 'Asia/Singapore',
+  'W. Australia Standard Time': 'Australia/Perth',
+  'Taipei Standard Time': 'Asia/Taipei',
+  'Ulaanbaatar Standard Time': 'Asia/Ulaanbaatar',
+  'North Asia East Standard Time': 'Asia/Irkutsk',
+  'Japan Standard Time': 'Asia/Tokyo',
+  'Korea Standard Time': 'Asia/Seoul',
+  'Cen. Australia Standard Time': 'Australia/Adelaide',
+  'AUS Central Standard Time': 'Australia/Darwin',
+  'E. Australia Standard Time': 'Australia/Brisbane',
+  'AUS Eastern Standard Time': 'Australia/Sydney',
+  'West Pacific Standard Time': 'Pacific/Port_Moresby',
+  'Tasmania Standard Time': 'Australia/Hobart',
+  'Yakutsk Standard Time': 'Asia/Yakutsk',
+  'Central Pacific Standard Time': 'Pacific/Guadalcanal',
+  'Vladivostok Standard Time': 'Asia/Vladivostok',
+  'New Zealand Standard Time': 'Pacific/Auckland',
+  'UTC+12': 'Etc/GMT-12',
+  'Fiji Standard Time': 'Pacific/Fiji',
+  'Magadan Standard Time': 'Asia/Magadan',
+  'Tonga Standard Time': 'Pacific/Tongatapu',
+  'Samoa Standard Time': 'Pacific/Apia',
+};
+
+// Convert a local datetime string (no Z) in a named timezone to UTC
+function localToUTC(localDateStr, ianaTimezone) {
+  // localDateStr: "2026-04-15T12:00:00"
+  // Treat as UTC first to get a reference point, then compute actual offset using Intl
+  const approxUTC = new Date(localDateStr + 'Z');
+  try {
+    const fmt = new Intl.DateTimeFormat('en-US', {
+      timeZone: ianaTimezone,
+      year: 'numeric', month: '2-digit', day: '2-digit',
+      hour: '2-digit', minute: '2-digit', second: '2-digit',
+      hour12: false,
+    });
+    const parts = fmt.formatToParts(approxUTC);
+    const get = (t) => parts.find(p => p.type === t)?.value || '00';
+    // What approxUTC looks like in the target timezone
+    let h = get('hour'); if (h === '24') h = '00';
+    const tzLocalStr = `${get('year')}-${get('month')}-${get('day')}T${h}:${get('minute')}:${get('second')}Z`;
+    const tzLocal = new Date(tzLocalStr);
+    // offset = approxUTC - tzLocal (e.g., +7h for PDT: 12:00UTC shows as 05:00 PDT → offset=+7h)
+    const offsetMs = approxUTC.getTime() - tzLocal.getTime();
+    return new Date(approxUTC.getTime() + offsetMs);
+  } catch (e) {
+    return approxUTC; // Fallback: treat as UTC
+  }
+}
+
+// Parse a full DTSTART/DTEND line (including property name + params) and return ISO UTC string
+function parseICSDateLine(fullLine) {
+  if (!fullLine) return null;
+  const colonIdx = fullLine.indexOf(':');
+  if (colonIdx < 0) return null;
+
+  const params = fullLine.slice(0, colonIdx);
+  const val    = fullLine.slice(colonIdx + 1).trim();
+
+  // All-day DATE value
+  if (/^\d{8}$/.test(val)) {
+    return { iso: `${val.slice(0,4)}-${val.slice(4,6)}-${val.slice(6,8)}T00:00:00Z`, allDay: true };
+  }
+
+  const m = val.match(/^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})(Z?)$/);
+  if (!m) return null;
+
+  const localStr = `${m[1]}-${m[2]}-${m[3]}T${m[4]}:${m[5]}:${m[6]}`;
+  const hasZ     = !!m[7];
+
+  if (hasZ) {
+    return { iso: localStr + 'Z', allDay: false };
+  }
+
+  // Has TZID param → convert local time to UTC
+  const tzidMatch = params.match(/TZID=([^;:]+)/);
+  if (tzidMatch) {
+    const tzid = tzidMatch[1].trim();
+    const iana = WIN_TO_IANA[tzid] || tzid; // try direct IANA name as fallback
+    const utcDate = localToUTC(localStr, iana);
+    return { iso: utcDate.toISOString(), allDay: false };
+  }
+
+  // Floating time (no Z, no TZID) — store as-is (assume UTC)
+  return { iso: localStr + 'Z', allDay: false };
+}
+
+// Legacy helper for EXDATE and RRULE UNTIL values
 function parseICSDate(raw) {
   if (!raw) return null;
-  // Strip TZID= prefix if it slipped through (e.g. "TZID=...:20260402T090000")
   const val = raw.includes(':') ? raw.split(':').pop() : raw;
   if (/^\d{8}$/.test(val)) {
     return { iso: `${val.slice(0,4)}-${val.slice(4,6)}-${val.slice(6,8)}T00:00:00Z`, allDay: true };
@@ -131,11 +302,11 @@ function parseICS(text) {
     const uid = getICSProp(block, 'UID');
     if (!uid) continue;
 
-    // Dates — match line including optional TZID param
-    const dtStartRaw = block.match(/^DTSTART(?:;[^:]*)?:(.+)$/m)?.[1]?.trim();
-    const dtEndRaw   = block.match(/^DTEND(?:;[^:]*)?:(.+)$/m)?.[1]?.trim();
-    const dtStart    = parseICSDate(dtStartRaw);
-    const dtEnd      = parseICSDate(dtEndRaw);
+    // Dates — capture full line (including TZID params) for proper timezone conversion
+    const dtStartLine = block.match(/^(DTSTART[^:\n]*:[^\n]+)$/m)?.[1];
+    const dtEndLine   = block.match(/^(DTEND[^:\n]*:[^\n]+)$/m)?.[1];
+    const dtStart     = parseICSDateLine(dtStartLine);
+    const dtEnd       = parseICSDateLine(dtEndLine);
 
     // Organizer CN
     const orgCN = block.match(/ORGANIZER[^:]*CN="([^"]+)"/m)?.[1]
