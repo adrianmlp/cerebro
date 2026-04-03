@@ -184,7 +184,11 @@ async function sendChat() {
   try {
     const data = await apiFetch('/api/chat', {
       method: 'POST',
-      body: JSON.stringify({ message: msg, mode, timezone: Intl.DateTimeFormat().resolvedOptions().timeZone }),
+      body: JSON.stringify({
+        message: msg, mode,
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+        tzLabel: new Intl.DateTimeFormat('en-US', { timeZoneName: 'short' }).formatToParts(new Date()).find(p => p.type === 'timeZoneName')?.value || '',
+      }),
     });
 
     loadingDiv.remove();

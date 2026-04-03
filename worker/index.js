@@ -907,8 +907,9 @@ export default {
       // ──────────────────────────────
       if (seg[1] === 'chat' && method === 'POST') {
         const body = await request.json();
-        const { message, mode, timezone } = body;
+        const { message, mode, timezone, tzLabel } = body;
         const tz = timezone || 'UTC';
+        const tzDisplay = tzLabel || tz;
         // Derive today's date in the user's local timezone for date math + relative date resolution
         const now = new Date();
         const today = new Intl.DateTimeFormat('en-CA', { timeZone: tz }).format(now); // YYYY-MM-DD
@@ -967,25 +968,33 @@ Priority options: URGENT, HIGH, NORMAL, BACKLOG. Today is ${today}.`;
           if (!startIso) return 'no time';
           const d = new Date(startIso);
           try {
-            const label = new Intl.DateTimeFormat('en-US', { timeZone: tz, timeZoneName: 'short' })
-              .formatToParts(d).find(p => p.type === 'timeZoneName')?.value || tz;
-            return d.toLocaleString('en-US', { timeZone: tz, weekday:'short', month:'short', day:'numeric', hour:'numeric', minute:'2-digit', hour12: true }) + ' ' + label;
+            return d.toLocaleString('en-US', { timeZone: tz, weekday:'short', month:'short', day:'numeric', hour:'numeric', minute:'2-digit', hour12: true }) + ' ' + tzDisplay;
           } catch(_) {
-            return d.toLocaleString('en-US', { timeZone: 'UTC', weekday:'short', month:'short', day:'numeric', hour:'numeric', minute:'2-digit', hour12: true }) + ' UTC';
+            return d.toUTCString();
           }
         }
 
         const todayLocal = new Date().toLocaleDateString('en-US', { timeZone: tz, weekday:'long', year:'numeric', month:'long', day:'numeric' });
-        const context = `Today is ${todayLocal}.
+
+        // Split events into upcoming vs recent past so AI knows which is "next"
+        const calUpcoming  = calEvents.filter(e => e.start_time >= today + 'T00:00:00');
+        const outlookUpcoming = outlookEvents.filter(e => e.start_time >= today + 'T00:00:00');
+        const calPast      = calEvents.filter(e => e.start_time <  today + 'T00:00:00');
+        const outlookPast  = outlookEvents.filter(e => e.start_time <  today + 'T00:00:00');
+
+        const context = `Today is ${todayLocal}. User timezone: ${tzDisplay}. All times below are already in ${tzDisplay} — quote them exactly, do NOT convert or say UTC.
 
 TASKS:
 ${tasks.map(t => `- [${t.completed ? 'x' : ' '}] ${tr(t.title)} (${t.priority})${t.due_date ? ` due ${t.due_date}` : ''}`).join('\n') || 'none'}
 
-PERSONAL CALENDAR (past 7d – next 30d):
-${calEvents.map(e => `- ${tr(e.title)} — ${fmtEvent(e.start_time)}`).join('\n') || 'none'}
+UPCOMING PERSONAL EVENTS (next 30d):
+${calUpcoming.map(e => `- ${tr(e.title)} — ${fmtEvent(e.start_time)}`).join('\n') || 'none'}
 
-WORK CALENDAR / OUTLOOK (past 7d – next 30d):
-${outlookEvents.map(e => `- ${tr(e.title)} — ${fmtEvent(e.start_time)}`).join('\n') || 'none'}
+UPCOMING WORK EVENTS / OUTLOOK (next 30d):
+${outlookUpcoming.map(e => `- ${tr(e.title)} — ${fmtEvent(e.start_time)}`).join('\n') || 'none'}
+
+RECENT PAST WORK EVENTS (last 7d):
+${outlookPast.map(e => `- ${tr(e.title)} — ${fmtEvent(e.start_time)}`).join('\n') || 'none'}
 
 NOTES:
 ${recentNotes.map(n => `- ${tr(n.title)}: ${(n.content || '').slice(0, 80)}`).join('\n') || 'none'}`;
