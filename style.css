@@ -194,6 +194,8 @@ body {
   border-radius: var(--r-card);
   box-shadow: var(--shadow);
   transition: border-color 0.2s;
+  overflow: hidden;
+  min-width: 0;
 }
 
 .card:hover { border-color: var(--border-hover); }
