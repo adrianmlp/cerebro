@@ -19,8 +19,11 @@ function checkAuth(request, env) {
   return pass === env.APP_PASSWORD;
 }
 
-// ── Migrations ──
+// ── Migrations — run once per isolate lifetime, not on every request ──
+let _migrationsDone = false;
 async function runMigrations(env) {
+  if (_migrationsDone) return;
+  _migrationsDone = true;
   const stmts = [
     `CREATE TABLE IF NOT EXISTS tasks (
       id TEXT PRIMARY KEY, title TEXT NOT NULL, description TEXT DEFAULT '',
@@ -607,6 +610,23 @@ function generateRecurringInstances(event, rangeStart, rangeEnd, exceptionMap) {
 // ── Router ──
 export default {
   async fetch(request, env) {
+    try {
+      return await handleRequest(request, env);
+    } catch (e) {
+      // Top-level catch: always return CORS headers so browser doesn't see a network error
+      return new Response(JSON.stringify({ error: e.message || 'Internal error' }), {
+        status: 500,
+        headers: { 'Content-Type': 'application/json', ...CORS },
+      });
+    }
+  },
+
+  async scheduled(event, env, ctx) {
+    ctx.waitUntil(syncOutlook(env));
+  },
+};
+
+async function handleRequest(request, env) {
     await runMigrations(env);
 
     const url    = new URL(request.url);
@@ -1047,13 +1067,19 @@ Resolve relative dates to absolute YYYY-MM-DD based on today being ${today}.
 
 For all other responses return plain text — no JSON.`;
 
-        const aiRes = await env.AI.run('@cf/meta/llama-3.1-8b-instruct', {
-          messages: [
-            { role: 'system', content: systemPrompt },
-            { role: 'user', content: message },
-          ],
-          max_tokens: 512,
-        });
+        const timeout = new Promise((_, reject) =>
+          setTimeout(() => reject(new Error('AI response timed out — please try again')), 25000)
+        );
+        const aiRes = await Promise.race([
+          env.AI.run('@cf/meta/llama-3.1-8b-instruct', {
+            messages: [
+              { role: 'system', content: systemPrompt },
+              { role: 'user', content: message },
+            ],
+            max_tokens: 512,
+          }),
+          timeout,
+        ]);
 
         const raw = aiRes.response.trim();
         let parsed = null;
@@ -1088,10 +1114,4 @@ For all other responses return plain text — no JSON.`;
     } catch (e) {
       return json({ error: e.message }, 500);
     }
-  },
-
-  // ── Cron: 6-hour Outlook sync ──
-  async scheduled(event, env, ctx) {
-    ctx.waitUntil(syncOutlook(env));
-  },
-};
+}
