@@ -241,7 +241,7 @@ body {
   margin-left: auto;
 }
 
-.card-body { padding: 16px 20px; overflow: hidden; }
+.card-body { padding: 16px 20px; }
 
 /* ─────────────────────────────
    BUTTONS
@@ -1376,6 +1376,32 @@ body {
   grid-template-columns: 1fr 1fr;
   gap: 20px;
   margin-bottom: 20px;
+}
+
+/* Scrollable list areas inside dashboard cards */
+#schedule-list {
+  overflow-y: auto;
+  max-height: 330px;
+}
+
+#todo-list {
+  overflow-y: auto;
+  max-height: 290px;
+}
+
+/* Thin dark scrollbar for list panels */
+#schedule-list::-webkit-scrollbar,
+#todo-list::-webkit-scrollbar { width: 4px; }
+#schedule-list::-webkit-scrollbar-track,
+#todo-list::-webkit-scrollbar-track { background: transparent; }
+#schedule-list::-webkit-scrollbar-thumb,
+#todo-list::-webkit-scrollbar-thumb {
+  background: rgba(255,255,255,0.15);
+  border-radius: 2px;
+}
+#schedule-list::-webkit-scrollbar-thumb:hover,
+#todo-list::-webkit-scrollbar-thumb:hover {
+  background: rgba(255,255,255,0.28);
 }
 
 /* ─────────────────────────────
