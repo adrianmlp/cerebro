@@ -960,7 +960,19 @@ Priority options: URGENT, HIGH, NORMAL, BACKLOG. Today is ${today}.`;
           fetchOutlookEventsInRange(env, pastDate, futureDate),
         ]);
 
-        // Cap and truncate Outlook events to keep token count low
+        // Extract meaningful search keywords from the user's message
+        const STOPWORDS = new Set(['when','is','my','next','last','the','a','an','what','do','does','did','will','would','could','should','have','has','had','i','me','you','we','they','this','that','are','or','and','but','for','not','with','from','by','at','to','of','in','on','about','any','all','tell','show','find','list','get','meeting','event','calendar','schedule','scheduled','upcoming','today','tomorrow','week']);
+        const queryKeywords = [...new Set(
+          message.toLowerCase().split(/\W+/).filter(w => w.length > 1 && !STOPWORDS.has(w))
+        )];
+
+        // Pre-filter matching events using full untruncated titles (before capping)
+        function matchesQuery(ev) {
+          if (!queryKeywords.length) return false;
+          const haystack = (ev.title || '').toLowerCase();
+          return queryKeywords.some(k => haystack.includes(k));
+        }
+
         const tr = s => (s || '').length > 60 ? s.slice(0, 60) + '…' : (s || '');
         const outlookEvents = outlookEventsRaw.slice(0, 40);
 
@@ -982,9 +994,18 @@ Priority options: URGENT, HIGH, NORMAL, BACKLOG. Today is ${today}.`;
         const calPast      = calEvents.filter(e => e.start_time <  today + 'T00:00:00');
         const outlookPast  = outlookEvents.filter(e => e.start_time <  today + 'T00:00:00');
 
-        const context = `Today is ${todayLocal}. User timezone: ${tzDisplay}. All times below are already in ${tzDisplay} — quote them exactly, do NOT convert or say UTC.
+        // Events whose full title matches any query keyword (shown untruncated, highest priority)
+        const matchedUpcoming = outlookUpcoming.filter(matchesQuery)
+          .concat(calUpcoming.filter(matchesQuery));
+        const matchedPast = outlookPast.filter(matchesQuery)
+          .concat(calEvents.filter(e => e.start_time < today + 'T00:00:00').filter(matchesQuery));
 
-TASKS:
+        const context = `Today is ${todayLocal}. All times are in ${tzDisplay} — quote them exactly as shown.
+
+${matchedUpcoming.length ? `EVENTS MATCHING QUERY (answer from these first):
+${matchedUpcoming.map(e => `- ${e.title} — ${fmtEvent(e.start_time)}`).join('\n')}
+
+` : ''}TASKS:
 ${tasks.map(t => `- [${t.completed ? 'x' : ' '}] ${tr(t.title)} (${t.priority})${t.due_date ? ` due ${t.due_date}` : ''}`).join('\n') || 'none'}
 
 UPCOMING PERSONAL EVENTS (next 30d):
@@ -993,10 +1014,10 @@ ${calUpcoming.map(e => `- ${tr(e.title)} — ${fmtEvent(e.start_time)}`).join('\
 UPCOMING WORK EVENTS / OUTLOOK (next 30d):
 ${outlookUpcoming.map(e => `- ${tr(e.title)} — ${fmtEvent(e.start_time)}`).join('\n') || 'none'}
 
-RECENT PAST WORK EVENTS (last 7d):
-${outlookPast.map(e => `- ${tr(e.title)} — ${fmtEvent(e.start_time)}`).join('\n') || 'none'}
+${matchedPast.length ? `PAST EVENTS MATCHING QUERY:
+${matchedPast.map(e => `- ${e.title} — ${fmtEvent(e.start_time)}`).join('\n')}
 
-NOTES:
+` : ''}NOTES:
 ${recentNotes.map(n => `- ${tr(n.title)}: ${(n.content || '').slice(0, 80)}`).join('\n') || 'none'}`;
 
         const systemPrompt = `You are Cerebro, a smart personal assistant. Today is ${today}.
