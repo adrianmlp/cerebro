@@ -40,7 +40,12 @@
       <button data-view="week">Week</button>
       <button data-view="day">Day</button>
     </div>
-    <button class="btn btn-primary btn-sm" id="add-event-btn" style="margin-left:auto">+ Add Event</button>
+    <div style="margin-left:auto;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+      <span class="sync-status-text" id="sync-status-text"></span>
+      <button class="btn btn-ghost btn-sm" id="sync-btn" title="Sync Outlook calendar">⟳ Sync</button>
+      <button class="btn btn-ghost btn-sm" id="hidden-events-btn" title="Manage hidden work events">🚫 Hidden</button>
+      <button class="btn btn-primary btn-sm" id="add-event-btn">+ Add Event</button>
+    </div>
   </div>
 
   <!-- Calendar content -->
@@ -60,7 +65,7 @@
   </div>
 </div>
 
-<!-- Event Modal -->
+<!-- Event Modal (add/edit personal) -->
 <div class="modal-backdrop" id="event-modal">
   <div class="modal" style="max-width:540px">
     <div class="modal-header">
@@ -131,7 +136,7 @@
   </div>
 </div>
 
-<!-- Event detail popup -->
+<!-- Personal event detail popup -->
 <div class="modal-backdrop" id="event-detail-modal">
   <div class="modal" style="max-width:380px">
     <div class="modal-header">
@@ -141,6 +146,34 @@
     </div>
     <div class="modal-body" id="detail-body"></div>
     <div class="modal-footer" id="detail-footer"></div>
+  </div>
+</div>
+
+<!-- Outlook (work) event detail popup — read-only -->
+<div class="modal-backdrop" id="outlook-detail-modal">
+  <div class="modal" style="max-width:400px">
+    <div class="modal-header">
+      <div class="work-event-badge">🏢 Work</div>
+      <div class="modal-title" id="outlook-detail-title" style="flex:1"></div>
+      <button class="btn-icon" onclick="closeOutlookDetail()">✕</button>
+    </div>
+    <div class="modal-body" id="outlook-detail-body"></div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost btn-sm" id="outlook-hide-btn">🚫 Hide Event</button>
+    </div>
+  </div>
+</div>
+
+<!-- Hidden events modal -->
+<div class="modal-backdrop" id="hidden-events-modal">
+  <div class="modal" style="max-width:480px">
+    <div class="modal-header">
+      <div class="modal-title">Hidden Work Events</div>
+      <button class="btn-icon" onclick="closeHiddenModal()">✕</button>
+    </div>
+    <div class="modal-body" id="hidden-events-body">
+      <div class="spinner"></div>
+    </div>
   </div>
 </div>
 

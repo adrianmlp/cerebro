@@ -39,27 +39,260 @@ async function runMigrations(env) {
       id TEXT PRIMARY KEY, title TEXT NOT NULL, content TEXT DEFAULT '',
       event_id TEXT, created_at TEXT DEFAULT (datetime('now')), updated_at TEXT DEFAULT (datetime('now'))
     )`,
+    `CREATE TABLE IF NOT EXISTS outlook_events (
+      uid TEXT PRIMARY KEY,
+      title TEXT DEFAULT '',
+      description TEXT DEFAULT '',
+      organizer TEXT DEFAULT '',
+      location TEXT DEFAULT '',
+      start_time TEXT,
+      end_time TEXT,
+      is_all_day INTEGER DEFAULT 0,
+      recurrence_rule TEXT,
+      recurrence_exceptions TEXT DEFAULT '[]',
+      synced_at TEXT DEFAULT (datetime('now'))
+    )`,
+    `CREATE TABLE IF NOT EXISTS hidden_outlook_events (
+      uid TEXT PRIMARY KEY,
+      title TEXT DEFAULT '',
+      hidden_at TEXT DEFAULT (datetime('now'))
+    )`,
   ];
   for (const sql of stmts) {
     try { await env.DB.prepare(sql).run(); } catch (e) {}
   }
-  // Column additions (safe to retry — D1 throws if column already exists)
+  // Column additions — idempotent
   try { await env.DB.prepare(`ALTER TABLE notes ADD COLUMN tags TEXT DEFAULT ''`).run(); } catch(e) {}
 }
 
-// ── Recurring event generation ──
-function advanceDate(date, recurrenceType) {
+// ── ICS Parser ──
+function unfoldICS(text) {
+  return text.replace(/\r\n[ \t]/g, '').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+}
+
+function getICSProp(block, key) {
+  const re = new RegExp(`^${key}(?:;[^:]*)?:(.*)$`, 'm');
+  const m = block.match(re);
+  return m ? m[1].trim() : null;
+}
+
+function unescapeICS(str) {
+  if (!str) return '';
+  return str
+    .replace(/\\n/g, '\n').replace(/\\N/g, '\n')
+    .replace(/\\,/g, ',').replace(/\\;/g, ';')
+    .replace(/\\\\/g, '\\');
+}
+
+function parseICSDate(raw) {
+  if (!raw) return null;
+  // Strip TZID= prefix if it slipped through (e.g. "TZID=...:20260402T090000")
+  const val = raw.includes(':') ? raw.split(':').pop() : raw;
+  if (/^\d{8}$/.test(val)) {
+    return { iso: `${val.slice(0,4)}-${val.slice(4,6)}-${val.slice(6,8)}T00:00:00Z`, allDay: true };
+  }
+  const m = val.match(/^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})(Z?)$/);
+  if (m) {
+    return { iso: `${m[1]}-${m[2]}-${m[3]}T${m[4]}:${m[5]}:${m[6]}${m[7] || 'Z'}`, allDay: false };
+  }
+  return null;
+}
+
+function parseRRule(str) {
+  if (!str) return null;
+  const parts = {};
+  str.split(';').forEach(p => { const [k, v] = p.split('='); if (k && v) parts[k] = v; });
+  const DAY = { SU:0, MO:1, TU:2, WE:3, TH:4, FR:5, SA:6 };
+  return {
+    freq:       parts.FREQ || 'WEEKLY',
+    interval:   parseInt(parts.INTERVAL || '1', 10),
+    byDay:      parts.BYDAY
+                  ? parts.BYDAY.split(',').map(d => DAY[d.replace(/[^A-Z]/g,'')]).filter(n => n !== undefined)
+                  : null,
+    until:      parts.UNTIL ? parseICSDate(parts.UNTIL)?.iso : null,
+    count:      parts.COUNT ? parseInt(parts.COUNT, 10) : null,
+  };
+}
+
+function parseICS(text) {
+  const unfolded = unfoldICS(text);
+  const events   = [];
+  const parts    = unfolded.split('BEGIN:VEVENT');
+
+  for (let i = 1; i < parts.length; i++) {
+    const endIdx = parts[i].indexOf('END:VEVENT');
+    if (endIdx === -1) continue;
+    const block = parts[i].slice(0, endIdx);
+
+    const uid = getICSProp(block, 'UID');
+    if (!uid) continue;
+
+    // Dates — match line including optional TZID param
+    const dtStartRaw = block.match(/^DTSTART(?:;[^:]*)?:(.+)$/m)?.[1]?.trim();
+    const dtEndRaw   = block.match(/^DTEND(?:;[^:]*)?:(.+)$/m)?.[1]?.trim();
+    const dtStart    = parseICSDate(dtStartRaw);
+    const dtEnd      = parseICSDate(dtEndRaw);
+
+    // Organizer CN
+    const orgCN = block.match(/ORGANIZER[^:]*CN="([^"]+)"/m)?.[1]
+               || block.match(/ORGANIZER[^:]*CN=([^;:]+)/m)?.[1]
+               || '';
+
+    // EXDATE — cancelled instances
+    const exdates = [];
+    for (const m of block.matchAll(/^EXDATE(?:;[^:]*)?:(.+)$/mg)) {
+      const d = parseICSDate(m[1].trim());
+      if (d) exdates.push(d.iso.split('T')[0]);
+    }
+
+    // Skip exception/override entries (RECURRENCE-ID present) — we handle them via EXDATE
+    if (block.match(/^RECURRENCE-ID/m)) continue;
+
+    events.push({
+      uid:                   uid.trim(),
+      title:                 unescapeICS(getICSProp(block, 'SUMMARY')     || ''),
+      description:           unescapeICS(getICSProp(block, 'DESCRIPTION') || ''),
+      organizer:             orgCN.trim(),
+      location:              unescapeICS(getICSProp(block, 'LOCATION')    || ''),
+      start_time:            dtStart?.iso  || null,
+      end_time:              dtEnd?.iso    || null,
+      is_all_day:            dtStart?.allDay ? 1 : 0,
+      recurrence_rule:       getICSProp(block, 'RRULE') || null,
+      recurrence_exceptions: exdates.length ? JSON.stringify(exdates) : '[]',
+    });
+  }
+  return events;
+}
+
+// ── Outlook recurring instance generation ──
+function dateStr(d) {
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth()+1).padStart(2,'0')}-${String(d.getUTCDate()).padStart(2,'0')}`;
+}
+
+function generateOutlookInstances(event, rrule, rangeStart, rangeEnd) {
+  const exceptions = new Set(JSON.parse(event.recurrence_exceptions || '[]'));
+  const instances  = [];
+
+  const rStart     = new Date(rangeStart + 'T00:00:00Z');
+  const rEnd       = new Date(rangeEnd   + 'T23:59:59Z');
+  const untilDate  = rrule.until ? new Date(rrule.until) : null;
+  const maxDate    = untilDate && untilDate < rEnd ? untilDate : rEnd;
+
+  const evStart    = new Date(event.start_time);
+  const duration   = event.end_time ? new Date(event.end_time) - evStart : 0;
+  const hh = evStart.getUTCHours(), mm = evStart.getUTCMinutes(), ss = evStart.getUTCSeconds();
+
+  function withTime(d) {
+    const r = new Date(d); r.setUTCHours(hh, mm, ss, 0); return r;
+  }
+
+  function push(d) {
+    const ds = dateStr(d);
+    if (!exceptions.has(ds) && d >= rStart && d >= evStart && d <= maxDate) {
+      instances.push({
+        ...event,
+        start_time:    d.toISOString(),
+        end_time:      duration ? new Date(d.getTime() + duration).toISOString() : null,
+        _instanceDate: ds,
+      });
+    }
+  }
+
+  let safety = 0;
+
+  if (rrule.freq === 'DAILY') {
+    let cur = new Date(evStart);
+    while (cur <= maxDate && safety++ < 2000) {
+      if (rrule.count && instances.length >= rrule.count) break;
+      push(cur);
+      cur = new Date(cur); cur.setUTCDate(cur.getUTCDate() + rrule.interval);
+    }
+  } else if (rrule.freq === 'WEEKLY') {
+    if (rrule.byDay?.length) {
+      // Walk week by week, emit matching days
+      let ws = new Date(evStart);
+      ws.setUTCDate(ws.getUTCDate() - ws.getUTCDay()); ws.setUTCHours(0,0,0,0);
+      while (ws <= maxDate && safety++ < 5000) {
+        for (const dow of [...rrule.byDay].sort()) {
+          if (rrule.count && instances.length >= rrule.count) break;
+          const day = new Date(ws); day.setUTCDate(day.getUTCDate() + dow);
+          push(withTime(day));
+        }
+        if (rrule.count && instances.length >= rrule.count) break;
+        ws = new Date(ws); ws.setUTCDate(ws.getUTCDate() + 7 * rrule.interval);
+      }
+    } else {
+      let cur = new Date(evStart);
+      while (cur <= maxDate && safety++ < 500) {
+        if (rrule.count && instances.length >= rrule.count) break;
+        push(cur);
+        cur = new Date(cur); cur.setUTCDate(cur.getUTCDate() + 7 * rrule.interval);
+      }
+    }
+  } else if (rrule.freq === 'MONTHLY') {
+    let cur = new Date(evStart);
+    while (cur <= maxDate && safety++ < 200) {
+      if (rrule.count && instances.length >= rrule.count) break;
+      push(cur);
+      cur = new Date(cur); cur.setUTCMonth(cur.getUTCMonth() + rrule.interval);
+    }
+  } else if (rrule.freq === 'YEARLY') {
+    let cur = new Date(evStart);
+    while (cur <= maxDate && safety++ < 20) {
+      if (rrule.count && instances.length >= rrule.count) break;
+      push(cur);
+      cur = new Date(cur); cur.setUTCFullYear(cur.getUTCFullYear() + rrule.interval);
+    }
+  }
+
+  return instances;
+}
+
+// ── Outlook sync ──
+async function syncOutlook(env) {
+  const icsUrl = env.OUTLOOK_ICS_URL;
+  if (!icsUrl) return { ok: false, error: 'OUTLOOK_ICS_URL secret not set' };
+  try {
+    const res = await fetch(icsUrl, { headers: { 'User-Agent': 'Cerebro/1.0' } });
+    if (!res.ok) throw new Error(`ICS fetch failed: HTTP ${res.status}`);
+    const text   = await res.text();
+    const events = parseICS(text);
+
+    for (const ev of events) {
+      await env.DB.prepare(
+        `INSERT OR REPLACE INTO outlook_events
+         (uid, title, description, organizer, location, start_time, end_time, is_all_day, recurrence_rule, recurrence_exceptions, synced_at)
+         VALUES (?,?,?,?,?,?,?,?,?,?,datetime('now'))`
+      ).bind(
+        ev.uid, ev.title, ev.description, ev.organizer, ev.location,
+        ev.start_time, ev.end_time, ev.is_all_day,
+        ev.recurrence_rule, ev.recurrence_exceptions
+      ).run();
+    }
+
+    await env.DB.prepare(
+      `INSERT OR REPLACE INTO settings (key, value) VALUES ('outlook_last_sync', ?)`
+    ).bind(new Date().toISOString()).run();
+
+    return { ok: true, count: events.length };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+}
+
+// ── Personal-event recurring helpers (unchanged) ──
+function advanceDatePersonal(date, type) {
   const d = new Date(date);
-  switch (recurrenceType) {
-    case 'DAILY':    d.setDate(d.getDate() + 1); break;
-    case 'WEEKLY':   d.setDate(d.getDate() + 7); break;
-    case 'BIWEEKLY': d.setDate(d.getDate() + 14); break;
+  switch (type) {
+    case 'DAILY':    d.setDate(d.getDate() + 1);   break;
+    case 'WEEKLY':   d.setDate(d.getDate() + 7);   break;
+    case 'BIWEEKLY': d.setDate(d.getDate() + 14);  break;
     case 'MONTHLY':  d.setMonth(d.getMonth() + 1); break;
   }
   return d;
 }
 
-function dateStr(d) {
+function dateStrLocal(d) {
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 }
 
@@ -67,40 +300,35 @@ function generateRecurringInstances(event, rangeStart, rangeEnd, exceptionMap) {
   const instances = [];
   if (event.recurrence_type === 'NONE') return instances;
 
-  const start = new Date(event.start_time);
+  const start    = new Date(event.start_time);
   const duration = event.end_time ? (new Date(event.end_time) - start) : 0;
-  const recEnd = event.recurrence_end ? new Date(event.recurrence_end + 'T23:59:59') : new Date(rangeEnd + 'T23:59:59');
-  const rEnd = recEnd < new Date(rangeEnd + 'T23:59:59') ? recEnd : new Date(rangeEnd + 'T23:59:59');
-  const rStart = new Date(rangeStart + 'T00:00:00');
+  const recEnd   = event.recurrence_end ? new Date(event.recurrence_end + 'T23:59:59') : new Date(rangeEnd + 'T23:59:59');
+  const rEnd     = recEnd < new Date(rangeEnd + 'T23:59:59') ? recEnd : new Date(rangeEnd + 'T23:59:59');
+  const rStart   = new Date(rangeStart + 'T00:00:00');
 
   let cur = new Date(start);
   let safety = 0;
 
   while (cur <= rEnd && safety++ < 500) {
-    const key = `${event.id}_${dateStr(cur)}`;
+    const key = `${event.id}_${dateStrLocal(cur)}`;
     const exc = exceptionMap[key];
 
     if (cur >= rStart) {
       if (exc) {
-        if (!exc.is_deleted) {
-          instances.push({ ...exc, _isInstance: true });
-        }
+        if (!exc.is_deleted) instances.push({ ...exc, _isInstance: true });
       } else {
         const endTime = duration ? new Date(cur.getTime() + duration).toISOString() : null;
         instances.push({
           ...event,
-          id: event.id,
-          start_time: cur.toISOString(),
-          end_time: endTime,
-          _instanceDate: dateStr(cur),
-          _isInstance: true,
+          start_time:    cur.toISOString(),
+          end_time:      endTime,
+          _instanceDate: dateStrLocal(cur),
+          _isInstance:   true,
         });
       }
     }
-
-    cur = advanceDate(cur, event.recurrence_type);
+    cur = advanceDatePersonal(cur, event.recurrence_type);
   }
-
   return instances;
 }
 
@@ -109,8 +337,8 @@ export default {
   async fetch(request, env) {
     await runMigrations(env);
 
-    const url = new URL(request.url);
-    const path = url.pathname;
+    const url    = new URL(request.url);
+    const path   = url.pathname;
     const method = request.method;
 
     if (method === 'OPTIONS') return new Response(null, { headers: CORS });
@@ -122,7 +350,7 @@ export default {
       });
     }
 
-    const seg = path.split('/').filter(Boolean); // ['api', 'tasks', id, ...]
+    const seg = path.split('/').filter(Boolean); // ['api', ...]
 
     try {
 
@@ -140,18 +368,17 @@ export default {
           if (priority)  { q += ' AND priority = ?';  p.push(priority); }
           if (completed !== null && completed !== '') { q += ' AND completed = ?'; p.push(completed === 'true' ? 1 : 0); }
 
-          const priorityOrder = "CASE priority WHEN 'URGENT' THEN 0 WHEN 'HIGH' THEN 1 WHEN 'NORMAL' THEN 2 WHEN 'BACKLOG' THEN 3 ELSE 4 END";
-          if (sort === 'priority')  q += ` ORDER BY ${priorityOrder}, due_date ASC NULLS LAST`;
+          const po = "CASE priority WHEN 'URGENT' THEN 0 WHEN 'HIGH' THEN 1 WHEN 'NORMAL' THEN 2 WHEN 'BACKLOG' THEN 3 ELSE 4 END";
+          if (sort === 'priority')  q += ` ORDER BY ${po}, due_date ASC NULLS LAST`;
           else if (sort === 'due')  q += ' ORDER BY due_date ASC NULLS LAST, created_at DESC';
           else                      q += ' ORDER BY created_at DESC';
 
           const { results } = await env.DB.prepare(q).bind(...p).all();
           return json({ tasks: results });
         }
-
         if (method === 'POST') {
           const body = await request.json();
-          const id = crypto.randomUUID();
+          const id   = crypto.randomUUID();
           const task = await env.DB.prepare(
             `INSERT INTO tasks (id, title, description, priority, due_date) VALUES (?,?,?,?,?) RETURNING *`
           ).bind(id, body.title, body.description || '', body.priority || 'NORMAL', body.dueDate || null).first();
@@ -161,7 +388,6 @@ export default {
 
       if (seg[1] === 'tasks' && seg[2]) {
         const id = seg[2];
-
         if (method === 'PATCH') {
           const body = await request.json();
           const allowed = { title: body.title, description: body.description, priority: body.priority, completed: body.completed !== undefined ? (body.completed ? 1 : 0) : undefined, due_date: body.dueDate };
@@ -175,7 +401,6 @@ export default {
           const task = await env.DB.prepare(`UPDATE tasks SET ${sets.join(', ')} WHERE id = ? RETURNING *`).bind(...p).first();
           return task ? json({ task }) : json({ error: 'Not found' }, 404);
         }
-
         if (method === 'DELETE') {
           await env.DB.prepare('DELETE FROM tasks WHERE id = ?').bind(id).run();
           return json({ ok: true });
@@ -183,25 +408,21 @@ export default {
       }
 
       // ──────────────────────────────
-      // CALENDAR EVENTS
+      // CALENDAR EVENTS (personal)
       // ──────────────────────────────
       if (seg[1] === 'events' && !seg[2]) {
         if (method === 'GET') {
-          const start = url.searchParams.get('start') || dateStr(new Date());
-          const end   = url.searchParams.get('end')   || dateStr(new Date(Date.now() + 86400000 * 30));
+          const start = url.searchParams.get('start') || dateStrLocal(new Date());
+          const end   = url.searchParams.get('end')   || dateStrLocal(new Date(Date.now() + 86400000 * 30));
 
-          // Fetch base events (not exceptions) that could overlap range
           const { results: baseEvents } = await env.DB.prepare(
             `SELECT * FROM calendar_events
              WHERE parent_event_id IS NULL AND is_deleted = 0
-             AND (
-               (recurrence_type = 'NONE' AND date(start_time) >= ? AND date(start_time) <= ?)
-               OR recurrence_type != 'NONE'
-             )
+             AND ((recurrence_type = 'NONE' AND date(start_time) >= ? AND date(start_time) <= ?)
+               OR recurrence_type != 'NONE')
              ORDER BY start_time ASC`
           ).bind(start, end).all();
 
-          // Fetch exceptions in range
           const { results: exceptions } = await env.DB.prepare(
             `SELECT * FROM calendar_events WHERE parent_event_id IS NOT NULL AND exception_date >= ? AND exception_date <= ?`
           ).bind(start, end).all();
@@ -213,20 +434,16 @@ export default {
 
           const allEvents = [];
           for (const ev of baseEvents) {
-            if (ev.recurrence_type === 'NONE') {
-              allEvents.push(ev);
-            } else {
-              allEvents.push(...generateRecurringInstances(ev, start, end, exceptionMap));
-            }
+            if (ev.recurrence_type === 'NONE') allEvents.push(ev);
+            else allEvents.push(...generateRecurringInstances(ev, start, end, exceptionMap));
           }
-
           allEvents.sort((a, b) => new Date(a.start_time) - new Date(b.start_time));
           return json({ events: allEvents });
         }
 
         if (method === 'POST') {
           const body = await request.json();
-          const id = crypto.randomUUID();
+          const id   = crypto.randomUUID();
           const event = await env.DB.prepare(
             `INSERT INTO calendar_events (id,title,description,start_time,end_time,color,is_important,location,recurrence_type,recurrence_end)
              VALUES (?,?,?,?,?,?,?,?,?,?) RETURNING *`
@@ -241,17 +458,13 @@ export default {
 
       if (seg[1] === 'events' && seg[2] && seg[3] === 'notes') {
         const eventId = seg[2];
-
         if (method === 'GET') {
-          const { results } = await env.DB.prepare(
-            `SELECT * FROM notes WHERE event_id = ? ORDER BY created_at ASC`
-          ).bind(eventId).all();
+          const { results } = await env.DB.prepare(`SELECT * FROM notes WHERE event_id = ? ORDER BY created_at ASC`).bind(eventId).all();
           return json({ notes: results });
         }
-
         if (method === 'POST') {
           const body = await request.json();
-          const id = crypto.randomUUID();
+          const id   = crypto.randomUUID();
           const note = await env.DB.prepare(
             `INSERT INTO notes (id, title, content, event_id) VALUES (?,?,?,?) RETURNING *`
           ).bind(id, body.title || 'Meeting Notes', body.content || '', eventId).first();
@@ -261,25 +474,19 @@ export default {
 
       if (seg[1] === 'events' && seg[2] && !seg[3]) {
         const id = seg[2];
-
         if (method === 'GET') {
           const event = await env.DB.prepare('SELECT * FROM calendar_events WHERE id = ?').bind(id).first();
           return event ? json({ event }) : json({ error: 'Not found' }, 404);
         }
-
         if (method === 'PATCH') {
-          const body = await request.json();
-          const deleteAll = url.searchParams.get('all') === 'true';
+          const body       = await request.json();
+          const deleteAll  = url.searchParams.get('all') === 'true';
 
-          // If editing a generated recurring instance → create exception record
           if (body._instanceDate && !deleteAll) {
             const parentId = body.parentEventId || id;
-            const excId = crypto.randomUUID();
+            const excId    = crypto.randomUUID();
             const original = await env.DB.prepare('SELECT * FROM calendar_events WHERE id = ?').bind(parentId).first();
             if (!original) return json({ error: 'Not found' }, 404);
-
-            // Build new start_time preserving time but updating to instance date
-            const origStart = new Date(body.startTime || original.start_time);
             const event = await env.DB.prepare(
               `INSERT INTO calendar_events
                 (id, title, description, start_time, end_time, color, is_important, location, recurrence_type, parent_event_id, exception_date)
@@ -293,7 +500,6 @@ export default {
             return json({ event }, 201);
           }
 
-          // Otherwise update base event
           const allowed = { title: body.title, description: body.description, start_time: body.startTime, end_time: body.endTime, color: body.color, is_important: body.isImportant !== undefined ? (body.isImportant ? 1 : 0) : undefined, location: body.location, recurrence_type: body.recurrenceType, recurrence_end: body.recurrenceEnd };
           const sets = []; const p = [];
           for (const [k, v] of Object.entries(allowed)) {
@@ -305,13 +511,10 @@ export default {
           const event = await env.DB.prepare(`UPDATE calendar_events SET ${sets.join(', ')} WHERE id = ? RETURNING *`).bind(...p).first();
           return event ? json({ event }) : json({ error: 'Not found' }, 404);
         }
-
         if (method === 'DELETE') {
-          const deleteAll = url.searchParams.get('all') === 'true';
+          const deleteAll    = url.searchParams.get('all') === 'true';
           const instanceDate = url.searchParams.get('instanceDate');
-
           if (instanceDate) {
-            // Soft-delete this specific instance by creating a deleted exception
             const event = await env.DB.prepare('SELECT * FROM calendar_events WHERE id = ?').bind(id).first();
             if (!event) return json({ error: 'Not found' }, 404);
             const excId = crypto.randomUUID();
@@ -321,15 +524,86 @@ export default {
             ).bind(excId, event.title, '', event.start_time, event.color, 'NONE', id, instanceDate).run();
             return json({ ok: true });
           }
-
           if (deleteAll) {
-            // Delete entire series + all exceptions
             await env.DB.prepare('DELETE FROM calendar_events WHERE id = ? OR parent_event_id = ?').bind(id, id).run();
           } else {
             await env.DB.prepare('DELETE FROM calendar_events WHERE id = ?').bind(id).run();
           }
           return json({ ok: true });
         }
+      }
+
+      // ──────────────────────────────
+      // OUTLOOK EVENTS
+      // ──────────────────────────────
+      if (seg[1] === 'outlook' && seg[2] === 'events' && method === 'GET') {
+        const start = url.searchParams.get('start');
+        const end   = url.searchParams.get('end');
+        if (!start || !end) return json({ error: 'start and end required' }, 400);
+
+        const { results: hiddenRows } = await env.DB.prepare('SELECT uid FROM hidden_outlook_events').all();
+        const hiddenUids = new Set(hiddenRows.map(r => r.uid));
+
+        const { results: allStored } = await env.DB.prepare('SELECT * FROM outlook_events').all();
+        const out = [];
+
+        for (const ev of allStored) {
+          if (hiddenUids.has(ev.uid)) continue;
+          if (!ev.start_time) continue;
+
+          if (!ev.recurrence_rule) {
+            const d = ev.start_time.split('T')[0];
+            if (d >= start && d <= end) out.push(ev);
+          } else {
+            const rrule = parseRRule(ev.recurrence_rule);
+            if (rrule) {
+              out.push(...generateOutlookInstances(ev, rrule, start, end));
+            }
+          }
+        }
+
+        out.sort((a, b) => new Date(a.start_time) - new Date(b.start_time));
+        return json({ events: out });
+      }
+
+      // Hidden events list
+      if (seg[1] === 'outlook' && seg[2] === 'hidden' && method === 'GET') {
+        const { results } = await env.DB.prepare(
+          'SELECT uid, title, hidden_at FROM hidden_outlook_events ORDER BY hidden_at DESC'
+        ).all();
+        return json({ hidden: results });
+      }
+
+      // Hide an event
+      if (seg[1] === 'outlook' && seg[2] === 'hide' && !seg[3]) {
+        if (method === 'POST') {
+          const body = await request.json();
+          await env.DB.prepare(
+            `INSERT OR REPLACE INTO hidden_outlook_events (uid, title) VALUES (?,?)`
+          ).bind(body.uid, body.title || '').run();
+          return json({ ok: true });
+        }
+      }
+
+      // Unhide an event
+      if (seg[1] === 'outlook' && seg[2] === 'hide' && seg[3]) {
+        if (method === 'DELETE') {
+          await env.DB.prepare('DELETE FROM hidden_outlook_events WHERE uid = ?').bind(seg[3]).run();
+          return json({ ok: true });
+        }
+      }
+
+      // ──────────────────────────────
+      // SYNC
+      // ──────────────────────────────
+      if (seg[1] === 'sync' && seg[2] === 'outlook' && method === 'POST') {
+        const result = await syncOutlook(env);
+        return result.ok ? json(result) : json(result, 500);
+      }
+
+      if (seg[1] === 'sync' && seg[2] === 'status' && method === 'GET') {
+        const row = await env.DB.prepare(`SELECT value FROM settings WHERE key = 'outlook_last_sync'`).first();
+        return json({ lastSync: row?.value || null });
       }
 
       // ──────────────────────────────
@@ -347,10 +621,9 @@ export default {
           const { results } = await env.DB.prepare(q).bind(...p).all();
           return json({ notes: results });
         }
-
         if (method === 'POST') {
           const body = await request.json();
-          const id = crypto.randomUUID();
+          const id   = crypto.randomUUID();
           const note = await env.DB.prepare(
             `INSERT INTO notes (id, title, content, tags) VALUES (?,?,?,?) RETURNING *`
           ).bind(id, body.title || 'Untitled', body.content || '', body.tags || '').first();
@@ -360,7 +633,6 @@ export default {
 
       if (seg[1] === 'notes' && seg[2]) {
         const id = seg[2];
-
         if (method === 'PATCH') {
           const body = await request.json();
           const sets = []; const p = [];
@@ -373,7 +645,6 @@ export default {
           const note = await env.DB.prepare(`UPDATE notes SET ${sets.join(', ')} WHERE id = ? RETURNING *`).bind(...p).first();
           return note ? json({ note }) : json({ error: 'Not found' }, 404);
         }
-
         if (method === 'DELETE') {
           await env.DB.prepare('DELETE FROM notes WHERE id = ?').bind(id).run();
           return json({ ok: true });
@@ -408,7 +679,6 @@ Priority options: URGENT, HIGH, NORMAL, BACKLOG. Today is ${today}.`;
             messages: [{ role: 'user', content: prompt }],
             max_tokens: 1024,
           });
-
           let data;
           try {
             const text = aiRes.response.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
@@ -419,10 +689,8 @@ Priority options: URGENT, HIGH, NORMAL, BACKLOG. Today is ${today}.`;
           return json(data);
         }
 
-        // Default: context-aware chat
-        // Fetch events from 30 days ago through 90 days ahead so the AI sees past and future events
-        const pastDate   = new Date(Date.now() - 30  * 86400000).toISOString().split('T')[0];
-        const futureDate = new Date(Date.now() + 90  * 86400000).toISOString().split('T')[0];
+        const pastDate   = new Date(Date.now() - 30 * 86400000).toISOString().split('T')[0];
+        const futureDate = new Date(Date.now() + 90 * 86400000).toISOString().split('T')[0];
 
         const [{ results: tasks }, { results: calEvents }, { results: recentNotes }] = await Promise.all([
           env.DB.prepare(`SELECT id, title, priority, completed, due_date FROM tasks ORDER BY created_at DESC LIMIT 30`).all(),
@@ -475,9 +743,9 @@ OR for events:
 }
 
 Priority options: URGENT, HIGH, NORMAL, BACKLOG.
-Resolve relative dates (tomorrow, next Monday, etc.) to absolute YYYY-MM-DD based on today being ${today}.
+Resolve relative dates to absolute YYYY-MM-DD based on today being ${today}.
 
-For all other responses (questions, lookups, general chat) return plain text — no JSON.`;
+For all other responses return plain text — no JSON.`;
 
         const aiRes = await env.AI.run('@cf/meta/llama-3.1-8b-instruct', {
           messages: [
@@ -488,8 +756,6 @@ For all other responses (questions, lookups, general chat) return plain text —
         });
 
         const raw = aiRes.response.trim();
-
-        // Try to parse as an action response
         let parsed = null;
         try {
           const clean = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
@@ -497,7 +763,7 @@ For all other responses (questions, lookups, general chat) return plain text —
         } catch (_) {}
 
         if (parsed?.action?.type === 'create_task') {
-          const d = parsed.action.data;
+          const d  = parsed.action.data;
           const id = crypto.randomUUID();
           await env.DB.prepare(
             `INSERT INTO tasks (id, title, description, priority, due_date) VALUES (?,?,?,?,?)`
@@ -506,7 +772,7 @@ For all other responses (questions, lookups, general chat) return plain text —
         }
 
         if (parsed?.action?.type === 'create_event') {
-          const d = parsed.action.data;
+          const d  = parsed.action.data;
           const id = crypto.randomUUID();
           await env.DB.prepare(
             `INSERT INTO calendar_events (id, title, description, start_time, end_time, color) VALUES (?,?,?,?,?,?)`
@@ -522,5 +788,10 @@ For all other responses (questions, lookups, general chat) return plain text —
     } catch (e) {
       return json({ error: e.message }, 500);
     }
+  },
+
+  // ── Cron: 6-hour Outlook sync ──
+  async scheduled(event, env, ctx) {
+    ctx.waitUntil(syncOutlook(env));
   },
 };

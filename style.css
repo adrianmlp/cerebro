@@ -1346,6 +1346,116 @@ body {
 /* ─────────────────────────────
    RESPONSIVE — MOBILE
 ───────────────────────────── */
+/* ─────────────────────────────
+   OUTLOOK / SPLIT CALENDAR
+───────────────────────────── */
+
+/* Side-by-side wrapper for week + day views */
+.cal-split-wrapper {
+  display: flex;
+  gap: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--r-card);
+  overflow: hidden;
+}
+
+.cal-split-panel {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.cal-split-divider {
+  width: 1px;
+  background: var(--border);
+  flex-shrink: 0;
+}
+
+.cal-split-header {
+  padding: 8px 14px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: var(--nav-h);
+  z-index: 2;
+}
+
+.work-header {
+  background: rgba(14,165,233,0.08);
+  color: #38BDF8;
+}
+
+.personal-header {
+  background: rgba(99,102,241,0.08);
+  color: var(--violet);
+}
+
+/* Work event chips in time grid */
+.work-time-event {
+  cursor: pointer;
+  opacity: 0.92;
+}
+.work-time-event:hover { opacity: 1; filter: brightness(1.1); }
+
+/* Work slots are not clickable-to-add */
+.work-slot { cursor: default; }
+.work-slot:hover { background: transparent; }
+
+/* Work event dots in month view */
+.cal-event-dot.work-event {
+  background: linear-gradient(90deg, #0EA5E9, #38BDF8);
+  cursor: pointer;
+}
+
+/* Outlook detail modal — work badge */
+.work-event-badge {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  color: #38BDF8;
+  background: rgba(14,165,233,0.12);
+  border: 1px solid rgba(14,165,233,0.3);
+  border-radius: 20px;
+  padding: 2px 8px;
+  flex-shrink: 0;
+}
+
+/* Sync status label */
+.sync-status-text {
+  font-size: 11px;
+  color: var(--text-3);
+  font-family: var(--font-mono);
+  white-space: nowrap;
+}
+
+.sync-status-text.unsynced { color: var(--high); }
+
+/* Hidden events modal rows */
+.hidden-event-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+  gap: 12px;
+}
+
+.hidden-event-row:last-child { border-bottom: none; }
+
+.hidden-event-title {
+  font-size: 13px;
+  color: var(--text-2);
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 @media (max-width: 680px) {
   .nav-links, .nav-date { display: none; }
   #mobile-menu-btn { display: flex; }
