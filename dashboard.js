@@ -53,26 +53,45 @@ async function loadTasks() {
 // ── Load Today's Schedule ──
 async function loadSchedule() {
   const today = localDateStr();
-  const { events } = await apiFetch(`/api/events?start=${today}&end=${today}`);
+
+  const [personalRes, outlookRes] = await Promise.all([
+    apiFetch(`/api/events?start=${today}&end=${today}`),
+    apiFetch(`/api/outlook/events?start=${today}&end=${today}`).catch(() => ({ events: [] })),
+  ]);
+
+  const personal = (personalRes.events || []).map(e => ({ ...e, _source: 'personal' }));
+  const work     = (outlookRes.events  || []).map(e => ({ ...e, _source: 'work' }));
+
+  // Merge and sort by start time
+  const allEvents = [...personal, ...work].sort((a, b) =>
+    (a.start_time || '').localeCompare(b.start_time || '')
+  );
 
   const subtitle = document.getElementById('schedule-subtitle');
   const list = document.getElementById('schedule-list');
 
   const d = new Date();
-  subtitle.textContent = `${d.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })} · ${events.length} event${events.length !== 1 ? 's' : ''}`;
+  subtitle.textContent = `${d.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })} · ${allEvents.length} event${allEvents.length !== 1 ? 's' : ''}`;
 
-  if (!events.length) {
+  if (!allEvents.length) {
     list.innerHTML = `<div class="empty-state" style="padding:20px 0"><div class="empty-text">No events today</div></div>`;
     return;
   }
 
-  list.innerHTML = events.map(e => `
-    <div class="event-chip" style="border-color:${e.color}">
-      <div class="event-chip-time">${formatTime(e.start_time)}</div>
-      <div class="event-chip-title">${e.title}</div>
-      ${e.recurrence_type !== 'NONE' ? '<span style="font-size:11px;color:var(--text-3)">↻</span>' : ''}
-    </div>
-  `).join('');
+  list.innerHTML = allEvents.map(e => {
+    const isWork = e._source === 'work';
+    const borderColor = isWork ? '#38BDF8' : (e.color || 'var(--violet)');
+    const badge = isWork
+      ? `<span style="font-size:10px;color:#38BDF8;opacity:0.8;margin-left:auto;flex-shrink:0">🏢</span>`
+      : (e.recurrence_type !== 'NONE' ? '<span style="font-size:11px;color:var(--text-3);margin-left:auto">↻</span>' : '');
+    return `
+      <div class="event-chip" style="border-color:${borderColor}">
+        <div class="event-chip-time">${formatTime(e.start_time)}</div>
+        <div class="event-chip-title" style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${e.title}</div>
+        ${badge}
+      </div>
+    `;
+  }).join('');
 }
 
 // ── Toggle task done ──

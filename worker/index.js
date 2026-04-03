@@ -67,6 +67,8 @@ async function runMigrations(env) {
   }
   // Column additions — idempotent
   try { await env.DB.prepare(`ALTER TABLE notes ADD COLUMN tags TEXT DEFAULT ''`).run(); } catch(e) {}
+  try { await env.DB.prepare(`ALTER TABLE outlook_events ADD COLUMN event_tzid TEXT`).run(); } catch(e) {}
+  try { await env.DB.prepare(`ALTER TABLE outlook_events ADD COLUMN local_start TEXT`).run(); } catch(e) {}
 }
 
 // ── ICS Parser ──
@@ -196,10 +198,50 @@ const WIN_TO_IANA = {
   'Samoa Standard Time': 'Pacific/Apia',
 };
 
-// Convert a local datetime string (no Z) in a named timezone to UTC
-function localToUTC(localDateStr, ianaTimezone) {
-  // localDateStr: "2026-04-15T12:00:00"
-  // Treat as UTC first to get a reference point, then compute actual offset using Intl
+// ── Extract VTIMEZONE offsets from the ICS file itself ──
+// Outlook embeds timezone rules (VTIMEZONE) that define the exact UTC offsets including DST.
+// Using these is more reliable than mapping timezone names to IANA IDs.
+function extractVTimezones(unfolded) {
+  const result = {};
+  const parts = unfolded.split('BEGIN:VTIMEZONE').slice(1);
+  for (const part of parts) {
+    const endIdx = part.indexOf('END:VTIMEZONE');
+    if (endIdx < 0) continue;
+    const vtz = part.slice(0, endIdx);
+    const tzid = getICSProp(vtz, 'TZID');
+    if (!tzid) continue;
+
+    function compOffset(type) {
+      const b = vtz.indexOf(`BEGIN:${type}`);
+      const e = vtz.indexOf(`END:${type}`);
+      if (b < 0 || e < 0) return null;
+      const s = getICSProp(vtz.slice(b, e), 'TZOFFSETTO');
+      if (!s) return null;
+      const m2 = s.match(/([+-])(\d{2})(\d{2})/);
+      if (!m2) return null;
+      const sign = m2[1] === '+' ? 1 : -1;
+      return sign * (parseInt(m2[2]) * 60 + parseInt(m2[3])) * 60 * 1000;
+    }
+    result[tzid.trim()] = { standard: compOffset('STANDARD'), daylight: compOffset('DAYLIGHT') };
+  }
+  return result;
+}
+
+// Convert local datetime string to UTC using VTIMEZONE-defined offsets
+function localToUTCFromVTZ(localDateStr, vtz) {
+  const localDate = new Date(localDateStr + 'Z'); // treat local time as UTC momentarily
+  const month = localDate.getUTCMonth() + 1; // 1-12
+  // Use daylight offset for Northern Hemisphere DST months (Mar–Nov), otherwise standard
+  const offsetMs = (vtz.daylight !== null && month >= 3 && month <= 11)
+    ? vtz.daylight
+    : vtz.standard;
+  if (offsetMs === null) return localDate;
+  // UTC = local_time - UTC_offset  (e.g., PDT offset = -7h → UTC = local + 7h)
+  return new Date(localDate.getTime() - offsetMs);
+}
+
+// Fallback: convert local time using IANA timezone via Intl API
+function localToUTCFromIANA(localDateStr, ianaTimezone) {
   const approxUTC = new Date(localDateStr + 'Z');
   try {
     const fmt = new Intl.DateTimeFormat('en-US', {
@@ -210,20 +252,17 @@ function localToUTC(localDateStr, ianaTimezone) {
     });
     const parts = fmt.formatToParts(approxUTC);
     const get = (t) => parts.find(p => p.type === t)?.value || '00';
-    // What approxUTC looks like in the target timezone
     let h = get('hour'); if (h === '24') h = '00';
-    const tzLocalStr = `${get('year')}-${get('month')}-${get('day')}T${h}:${get('minute')}:${get('second')}Z`;
-    const tzLocal = new Date(tzLocalStr);
-    // offset = approxUTC - tzLocal (e.g., +7h for PDT: 12:00UTC shows as 05:00 PDT → offset=+7h)
-    const offsetMs = approxUTC.getTime() - tzLocal.getTime();
-    return new Date(approxUTC.getTime() + offsetMs);
+    const tzLocal = new Date(`${get('year')}-${get('month')}-${get('day')}T${h}:${get('minute')}:${get('second')}Z`);
+    return new Date(approxUTC.getTime() + (approxUTC.getTime() - tzLocal.getTime()));
   } catch (e) {
-    return approxUTC; // Fallback: treat as UTC
+    return approxUTC;
   }
 }
 
-// Parse a full DTSTART/DTEND line (including property name + params) and return ISO UTC string
-function parseICSDateLine(fullLine) {
+// Parse a full DTSTART/DTEND line (including params) → UTC ISO string
+// vtimezones: map of TZID → { standard, daylight } offset in ms (from extractVTimezones)
+function parseICSDateLine(fullLine, vtimezones = {}) {
   if (!fullLine) return null;
   const colonIdx = fullLine.indexOf(':');
   if (colonIdx < 0) return null;
@@ -242,24 +281,25 @@ function parseICSDateLine(fullLine) {
   const localStr = `${m[1]}-${m[2]}-${m[3]}T${m[4]}:${m[5]}:${m[6]}`;
   const hasZ     = !!m[7];
 
-  if (hasZ) {
-    return { iso: localStr + 'Z', allDay: false };
-  }
+  if (hasZ) return { iso: localStr + 'Z', allDay: false };
 
-  // Has TZID param → convert local time to UTC
   const tzidMatch = params.match(/TZID=([^;:]+)/);
   if (tzidMatch) {
     const tzid = tzidMatch[1].trim();
-    const iana = WIN_TO_IANA[tzid] || tzid; // try direct IANA name as fallback
-    const utcDate = localToUTC(localStr, iana);
-    return { iso: utcDate.toISOString(), allDay: false };
+    // Prefer VTIMEZONE offsets embedded in the ICS (most accurate)
+    if (vtimezones[tzid]) {
+      return { iso: localToUTCFromVTZ(localStr, vtimezones[tzid]).toISOString(), allDay: false };
+    }
+    // Fallback: map Windows TZ name to IANA and use Intl API
+    const iana = WIN_TO_IANA[tzid] || tzid;
+    return { iso: localToUTCFromIANA(localStr, iana).toISOString(), allDay: false };
   }
 
-  // Floating time (no Z, no TZID) — store as-is (assume UTC)
+  // Floating time — treat as UTC
   return { iso: localStr + 'Z', allDay: false };
 }
 
-// Legacy helper for EXDATE and RRULE UNTIL values
+// Legacy helper for EXDATE / RRULE UNTIL (no TZID context needed)
 function parseICSDate(raw) {
   if (!raw) return null;
   const val = raw.includes(':') ? raw.split(':').pop() : raw;
@@ -290,9 +330,10 @@ function parseRRule(str) {
 }
 
 function parseICS(text) {
-  const unfolded = unfoldICS(text);
-  const events   = [];
-  const parts    = unfolded.split('BEGIN:VEVENT');
+  const unfolded   = unfoldICS(text);
+  const vtimezones = extractVTimezones(unfolded);
+  const events     = [];
+  const parts      = unfolded.split('BEGIN:VEVENT');
 
   for (let i = 1; i < parts.length; i++) {
     const endIdx = parts[i].indexOf('END:VEVENT');
@@ -305,8 +346,14 @@ function parseICS(text) {
     // Dates — capture full line (including TZID params) for proper timezone conversion
     const dtStartLine = block.match(/^(DTSTART[^:\n]*:[^\n]+)$/m)?.[1];
     const dtEndLine   = block.match(/^(DTEND[^:\n]*:[^\n]+)$/m)?.[1];
-    const dtStart     = parseICSDateLine(dtStartLine);
-    const dtEnd       = parseICSDateLine(dtEndLine);
+    const dtStart     = parseICSDateLine(dtStartLine, vtimezones);
+    const dtEnd       = parseICSDateLine(dtEndLine, vtimezones);
+
+    // Extract TZID and local clock time from DTSTART for DST-correct recurring instance generation
+    const dtStartTzid = dtStartLine?.match(/TZID=([^;:]+)/)?.[1]?.trim() || null;
+    const dtStartLocalVal = dtStartLine?.split(':').pop()?.trim() || '';
+    const dtStartTimeParts = dtStartLocalVal.match(/^\d{8}T(\d{2})(\d{2})(\d{2})/);
+    const localStart = dtStartTimeParts ? `${dtStartTimeParts[1]}:${dtStartTimeParts[2]}:${dtStartTimeParts[3]}` : null;
 
     // Organizer CN
     const orgCN = block.match(/ORGANIZER[^:]*CN="([^"]+)"/m)?.[1]
@@ -334,6 +381,8 @@ function parseICS(text) {
       is_all_day:            dtStart?.allDay ? 1 : 0,
       recurrence_rule:       getICSProp(block, 'RRULE') || null,
       recurrence_exceptions: exdates.length ? JSON.stringify(exdates) : '[]',
+      event_tzid:            dtStartTzid,
+      local_start:           localStart,
     });
   }
   return events;
@@ -355,10 +404,21 @@ function generateOutlookInstances(event, rrule, rangeStart, rangeEnd) {
 
   const evStart    = new Date(event.start_time);
   const duration   = event.end_time ? new Date(event.end_time) - evStart : 0;
-  const hh = evStart.getUTCHours(), mm = evStart.getUTCMinutes(), ss = evStart.getUTCSeconds();
 
-  function withTime(d) {
-    const r = new Date(d); r.setUTCHours(hh, mm, ss, 0); return r;
+  // DST-correct UTC for each instance: use stored local clock time + IANA timezone
+  const localStartTime = event.local_start; // e.g. "14:00:00"
+  const ianaTimezone   = event.event_tzid ? (WIN_TO_IANA[event.event_tzid] || event.event_tzid) : null;
+
+  // Returns correct UTC Date for a given UTC-midnight Date, accounting for DST
+  function instanceUTC(dayMidnightUTC) {
+    const ds = dateStr(dayMidnightUTC); // "YYYY-MM-DD"
+    if (localStartTime && ianaTimezone) {
+      return localToUTCFromIANA(`${ds}T${localStartTime}`, ianaTimezone);
+    }
+    // Fallback: use UTC hours from base event start_time
+    const r = new Date(dayMidnightUTC);
+    r.setUTCHours(evStart.getUTCHours(), evStart.getUTCMinutes(), evStart.getUTCSeconds(), 0);
+    return r;
   }
 
   function push(d) {
@@ -376,11 +436,11 @@ function generateOutlookInstances(event, rrule, rangeStart, rangeEnd) {
   let safety = 0;
 
   if (rrule.freq === 'DAILY') {
-    let cur = new Date(evStart);
+    let cur = new Date(evStart); cur.setUTCHours(0, 0, 0, 0);
     while (cur <= maxDate && safety++ < 2000) {
       if (rrule.count && instances.length >= rrule.count) break;
-      push(cur);
-      cur = new Date(cur); cur.setUTCDate(cur.getUTCDate() + rrule.interval);
+      push(instanceUTC(cur));
+      cur.setUTCDate(cur.getUTCDate() + rrule.interval);
     }
   } else if (rrule.freq === 'WEEKLY') {
     if (rrule.byDay?.length) {
@@ -391,32 +451,32 @@ function generateOutlookInstances(event, rrule, rangeStart, rangeEnd) {
         for (const dow of [...rrule.byDay].sort()) {
           if (rrule.count && instances.length >= rrule.count) break;
           const day = new Date(ws); day.setUTCDate(day.getUTCDate() + dow);
-          push(withTime(day));
+          push(instanceUTC(day));
         }
         if (rrule.count && instances.length >= rrule.count) break;
-        ws = new Date(ws); ws.setUTCDate(ws.getUTCDate() + 7 * rrule.interval);
+        ws.setUTCDate(ws.getUTCDate() + 7 * rrule.interval);
       }
     } else {
-      let cur = new Date(evStart);
+      let cur = new Date(evStart); cur.setUTCHours(0, 0, 0, 0);
       while (cur <= maxDate && safety++ < 500) {
         if (rrule.count && instances.length >= rrule.count) break;
-        push(cur);
-        cur = new Date(cur); cur.setUTCDate(cur.getUTCDate() + 7 * rrule.interval);
+        push(instanceUTC(cur));
+        cur.setUTCDate(cur.getUTCDate() + 7 * rrule.interval);
       }
     }
   } else if (rrule.freq === 'MONTHLY') {
-    let cur = new Date(evStart);
+    let cur = new Date(evStart); cur.setUTCHours(0, 0, 0, 0);
     while (cur <= maxDate && safety++ < 200) {
       if (rrule.count && instances.length >= rrule.count) break;
-      push(cur);
-      cur = new Date(cur); cur.setUTCMonth(cur.getUTCMonth() + rrule.interval);
+      push(instanceUTC(cur));
+      cur.setUTCMonth(cur.getUTCMonth() + rrule.interval);
     }
   } else if (rrule.freq === 'YEARLY') {
-    let cur = new Date(evStart);
+    let cur = new Date(evStart); cur.setUTCHours(0, 0, 0, 0);
     while (cur <= maxDate && safety++ < 20) {
       if (rrule.count && instances.length >= rrule.count) break;
-      push(cur);
-      cur = new Date(cur); cur.setUTCFullYear(cur.getUTCFullYear() + rrule.interval);
+      push(instanceUTC(cur));
+      cur.setUTCFullYear(cur.getUTCFullYear() + rrule.interval);
     }
   }
 
@@ -439,12 +499,13 @@ async function syncOutlook(env) {
     for (const ev of events) {
       await env.DB.prepare(
         `INSERT OR REPLACE INTO outlook_events
-         (uid, title, description, organizer, location, start_time, end_time, is_all_day, recurrence_rule, recurrence_exceptions, synced_at)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?)`
+         (uid, title, description, organizer, location, start_time, end_time, is_all_day, recurrence_rule, recurrence_exceptions, event_tzid, local_start, synced_at)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`
       ).bind(
         ev.uid, ev.title, ev.description, ev.organizer, ev.location,
         ev.start_time, ev.end_time, ev.is_all_day,
         ev.recurrence_rule, ev.recurrence_exceptions,
+        ev.event_tzid || null, ev.local_start || null,
         syncTime
       ).run();
     }
