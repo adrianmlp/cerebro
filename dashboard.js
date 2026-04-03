@@ -184,7 +184,7 @@ async function sendChat() {
   try {
     const data = await apiFetch('/api/chat', {
       method: 'POST',
-      body: JSON.stringify({ message: msg, mode }),
+      body: JSON.stringify({ message: msg, mode, timezone: Intl.DateTimeFormat().resolvedOptions().timeZone }),
     });
 
     loadingDiv.remove();

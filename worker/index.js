@@ -907,8 +907,11 @@ export default {
       // ──────────────────────────────
       if (seg[1] === 'chat' && method === 'POST') {
         const body = await request.json();
-        const { message, mode } = body;
-        const today = new Date().toISOString().split('T')[0];
+        const { message, mode, timezone } = body;
+        const tz = timezone || 'UTC';
+        // Derive today's date in the user's local timezone for date math + relative date resolution
+        const now = new Date();
+        const today = new Intl.DateTimeFormat('en-CA', { timeZone: tz }).format(now); // YYYY-MM-DD
 
         if (mode === 'transcript') {
           const prompt = `You are Cerebro, a personal assistant AI. Analyze this meeting transcript or text and extract structured information.
@@ -963,10 +966,17 @@ Priority options: URGENT, HIGH, NORMAL, BACKLOG. Today is ${today}.`;
         function fmtEvent(startIso) {
           if (!startIso) return 'no time';
           const d = new Date(startIso);
-          return d.toLocaleString('en-US', { timeZone: 'UTC', weekday:'short', month:'short', day:'numeric', hour:'numeric', minute:'2-digit', hour12: true }) + ' UTC';
+          try {
+            const label = new Intl.DateTimeFormat('en-US', { timeZone: tz, timeZoneName: 'short' })
+              .formatToParts(d).find(p => p.type === 'timeZoneName')?.value || tz;
+            return d.toLocaleString('en-US', { timeZone: tz, weekday:'short', month:'short', day:'numeric', hour:'numeric', minute:'2-digit', hour12: true }) + ' ' + label;
+          } catch(_) {
+            return d.toLocaleString('en-US', { timeZone: 'UTC', weekday:'short', month:'short', day:'numeric', hour:'numeric', minute:'2-digit', hour12: true }) + ' UTC';
+          }
         }
 
-        const context = `Today is ${today} (${new Date().toLocaleString('en-US', { timeZone:'UTC', weekday:'long' })}).
+        const todayLocal = new Date().toLocaleDateString('en-US', { timeZone: tz, weekday:'long', year:'numeric', month:'long', day:'numeric' });
+        const context = `Today is ${todayLocal}.
 
 TASKS:
 ${tasks.map(t => `- [${t.completed ? 'x' : ' '}] ${tr(t.title)} (${t.priority})${t.due_date ? ` due ${t.due_date}` : ''}`).join('\n') || 'none'}
