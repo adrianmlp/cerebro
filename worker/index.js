@@ -531,6 +531,27 @@ async function syncOutlook(env) {
   }
 }
 
+// ── Reusable Outlook event fetcher (used by both the API route and chat context) ──
+async function fetchOutlookEventsInRange(env, start, end) {
+  const { results: hiddenRows } = await env.DB.prepare('SELECT uid FROM hidden_outlook_events').all();
+  const hiddenUids = new Set(hiddenRows.map(r => r.uid));
+  const { results: allStored } = await env.DB.prepare('SELECT * FROM outlook_events').all();
+  const out = [];
+  for (const ev of allStored) {
+    if (hiddenUids.has(ev.uid)) continue;
+    if (!ev.start_time) continue;
+    if (!ev.recurrence_rule) {
+      const d = ev.start_time.split('T')[0];
+      if (d >= start && d <= end) out.push(ev);
+    } else {
+      const rrule = parseRRule(ev.recurrence_rule);
+      if (rrule) out.push(...generateOutlookInstances(ev, rrule, start, end));
+    }
+  }
+  out.sort((a, b) => new Date(a.start_time) - new Date(b.start_time));
+  return out;
+}
+
 // ── Personal-event recurring helpers (unchanged) ──
 function advanceDatePersonal(date, type) {
   const d = new Date(date);
@@ -792,28 +813,7 @@ export default {
         const end   = url.searchParams.get('end');
         if (!start || !end) return json({ error: 'start and end required' }, 400);
 
-        const { results: hiddenRows } = await env.DB.prepare('SELECT uid FROM hidden_outlook_events').all();
-        const hiddenUids = new Set(hiddenRows.map(r => r.uid));
-
-        const { results: allStored } = await env.DB.prepare('SELECT * FROM outlook_events').all();
-        const out = [];
-
-        for (const ev of allStored) {
-          if (hiddenUids.has(ev.uid)) continue;
-          if (!ev.start_time) continue;
-
-          if (!ev.recurrence_rule) {
-            const d = ev.start_time.split('T')[0];
-            if (d >= start && d <= end) out.push(ev);
-          } else {
-            const rrule = parseRRule(ev.recurrence_rule);
-            if (rrule) {
-              out.push(...generateOutlookInstances(ev, rrule, start, end));
-            }
-          }
-        }
-
-        out.sort((a, b) => new Date(a.start_time) - new Date(b.start_time));
+        const out = await fetchOutlookEventsInRange(env, start, end);
         return json({ events: out });
       }
 
@@ -943,7 +943,7 @@ Priority options: URGENT, HIGH, NORMAL, BACKLOG. Today is ${today}.`;
         const pastDate   = new Date(Date.now() - 30 * 86400000).toISOString().split('T')[0];
         const futureDate = new Date(Date.now() + 90 * 86400000).toISOString().split('T')[0];
 
-        const [{ results: tasks }, { results: calEvents }, { results: recentNotes }] = await Promise.all([
+        const [{ results: tasks }, { results: calEvents }, { results: recentNotes }, outlookEvents] = await Promise.all([
           env.DB.prepare(`SELECT id, title, priority, completed, due_date FROM tasks ORDER BY created_at DESC LIMIT 30`).all(),
           env.DB.prepare(
             `SELECT id, title, start_time, end_time, recurrence_type FROM calendar_events
@@ -953,20 +953,30 @@ Priority options: URGENT, HIGH, NORMAL, BACKLOG. Today is ${today}.`;
              ORDER BY start_time ASC LIMIT 50`
           ).bind(pastDate, futureDate).all(),
           env.DB.prepare(`SELECT id, title, content FROM notes WHERE event_id IS NULL ORDER BY updated_at DESC LIMIT 10`).all(),
+          fetchOutlookEventsInRange(env, pastDate, futureDate),
         ]);
 
+        function fmtEvent(startIso) {
+          if (!startIso) return 'no time';
+          // Format in UTC — prefix date so AI can reason about day-of-week
+          const d = new Date(startIso);
+          return d.toLocaleString('en-US', { timeZone: 'UTC', weekday:'short', year:'numeric', month:'short', day:'numeric', hour:'numeric', minute:'2-digit', hour12: true }) + ' UTC';
+        }
+
         const context = `
-Today is ${today}.
+Today is ${today} (${new Date().toLocaleString('en-US', { timeZone:'UTC', weekday:'long' })}).
 
 TASKS (${tasks.length}):
 ${tasks.map(t => `- [${t.completed ? 'done' : 'open'}] ${t.title} (${t.priority})${t.due_date ? ` due ${t.due_date}` : ''}`).join('\n') || 'No tasks'}
 
-CALENDAR EVENTS — past 30 days through next 90 days (${calEvents.length}):
+PERSONAL CALENDAR EVENTS — past 30 days through next 90 days (${calEvents.length}):
 ${calEvents.map(e => {
-  const dt = e.start_time ? new Date(e.start_time).toLocaleString('en-US', { weekday:'short', month:'short', day:'numeric', hour:'numeric', minute:'2-digit' }) : 'no time';
   const recur = e.recurrence_type !== 'NONE' ? ` [repeats ${e.recurrence_type.toLowerCase()}]` : '';
-  return `- ${e.title} on ${dt}${recur}`;
-}).join('\n') || 'No events'}
+  return `- ${e.title} on ${fmtEvent(e.start_time)}${recur}`;
+}).join('\n') || 'No personal events'}
+
+WORK CALENDAR EVENTS — Outlook, past 30 days through next 90 days (${outlookEvents.length}):
+${outlookEvents.map(e => `- ${e.title}${e.organizer ? ` (org: ${e.organizer})` : ''} on ${fmtEvent(e.start_time)}${e.location ? ` @ ${e.location}` : ''}`).join('\n') || 'No work events'}
 
 RECENT NOTES (${recentNotes.length}):
 ${recentNotes.map(n => `- ${n.title}: ${n.content?.slice(0, 100)}`).join('\n') || 'No notes'}`;
