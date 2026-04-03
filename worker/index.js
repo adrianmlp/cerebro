@@ -964,60 +964,65 @@ Priority options: URGENT, HIGH, NORMAL, BACKLOG. Today is ${today}.`;
           return json(data);
         }
 
-        // Tight date window to stay within model context limit
-        const pastDate   = new Date(Date.now() -  7 * 86400000).toISOString().split('T')[0];
         const futureDate = new Date(Date.now() + 30 * 86400000).toISOString().split('T')[0];
+        const todayPrefix = today + 'T00:00:00';
 
-        const [{ results: tasks }, { results: calEvents }, { results: recentNotes }, outlookEventsRaw] = await Promise.all([
-          env.DB.prepare(`SELECT id, title, priority, completed, due_date FROM tasks ORDER BY created_at DESC LIMIT 20`).all(),
-          env.DB.prepare(
-            `SELECT id, title, start_time, recurrence_type FROM calendar_events
-             WHERE is_deleted = 0 AND parent_event_id IS NULL
-             AND date(start_time) >= ? AND date(start_time) <= ?
-             ORDER BY start_time ASC LIMIT 20`
-          ).bind(pastDate, futureDate).all(),
-          env.DB.prepare(`SELECT title, content FROM notes WHERE event_id IS NULL ORDER BY updated_at DESC LIMIT 5`).all(),
-          fetchOutlookEventsInRange(env, pastDate, futureDate),
-        ]);
-
-        // Extract meaningful search keywords from the user's message
+        // Extract search keywords from message
         const STOPWORDS = new Set(['when','is','my','next','last','the','a','an','what','do','does','did','will','would','could','should','have','has','had','i','me','you','we','they','this','that','are','or','and','but','for','not','with','from','by','at','to','of','in','on','about','any','all','tell','show','find','list','get','meeting','event','calendar','schedule','scheduled','upcoming','today','tomorrow','week']);
         const queryKeywords = [...new Set(
           message.toLowerCase().split(/\W+/).filter(w => w.length > 1 && !STOPWORDS.has(w))
         )];
 
-        // Pre-filter matching events using full untruncated titles (before capping)
-        function matchesQuery(ev) {
-          if (!queryKeywords.length) return false;
-          const haystack = (ev.title || '').toLowerCase();
-          return queryKeywords.some(k => haystack.includes(k));
+        // SQL keyword search directly against base event titles (reliable, no instance-gen needed first)
+        let sqlMatched = [];
+        if (queryKeywords.length) {
+          const likeClause = queryKeywords.map(() => 'LOWER(title) LIKE ?').join(' OR ');
+          const likeArgs   = queryKeywords.map(k => `%${k}%`);
+          const { results: baseMatches } = await env.DB.prepare(
+            `SELECT * FROM outlook_events WHERE ${likeClause} LIMIT 10`
+          ).bind(...likeArgs).all();
+          for (const base of baseMatches) {
+            if (base.recurrence_rule) {
+              const rr = parseRRule(base.recurrence_rule);
+              if (rr) sqlMatched.push(...generateOutlookInstances(base, rr, today, futureDate).slice(0, 5));
+            } else if (base.start_time >= todayPrefix) {
+              sqlMatched.push(base);
+            }
+          }
+          // Also personal calendar
+          const { results: calMatches } = await env.DB.prepare(
+            `SELECT id, title, start_time FROM calendar_events WHERE (${likeClause}) AND is_deleted=0 AND date(start_time) >= ? LIMIT 5`
+          ).bind(...likeArgs, today).all();
+          sqlMatched.push(...calMatches);
+          sqlMatched.sort((a,b) => (a.start_time||'').localeCompare(b.start_time||''));
         }
 
+        const [{ results: tasks }, { results: calEvents }, { results: recentNotes }] = await Promise.all([
+          env.DB.prepare(`SELECT title, priority, completed, due_date FROM tasks ORDER BY created_at DESC LIMIT 15`).all(),
+          env.DB.prepare(
+            `SELECT title, start_time FROM calendar_events
+             WHERE is_deleted=0 AND date(start_time) >= ? AND date(start_time) <= ?
+             ORDER BY start_time ASC LIMIT 10`
+          ).bind(today, futureDate).all(),
+          env.DB.prepare(`SELECT title, content FROM notes WHERE event_id IS NULL ORDER BY updated_at DESC LIMIT 5`).all(),
+        ]);
+
         const tr = s => (s || '').length > 60 ? s.slice(0, 60) + '…' : (s || '');
-        const outlookEvents = outlookEventsRaw.slice(0, 40);
 
         function fmtEvent(startIso) {
           if (!startIso) return 'no time';
-          const d = new Date(startIso);
           try {
-            return d.toLocaleString('en-US', { timeZone: tz, weekday:'short', month:'short', day:'numeric', hour:'numeric', minute:'2-digit', hour12: true }) + ' ' + tzDisplay;
-          } catch(_) {
-            return d.toUTCString();
-          }
+            return new Date(startIso).toLocaleString('en-US', { timeZone: tz, weekday:'short', month:'short', day:'numeric', hour:'numeric', minute:'2-digit', hour12: true }) + ' ' + tzDisplay;
+          } catch(_) { return startIso; }
         }
 
         const todayLocal = new Date().toLocaleDateString('en-US', { timeZone: tz, weekday:'long', year:'numeric', month:'long', day:'numeric' });
+        const matchedUpcoming = sqlMatched.filter(e => (e.start_time||'') >= todayPrefix).slice(0, 8);
 
-        // Keyword-matched upcoming events (searched against full untruncated titles)
-        const todayPrefix = today + 'T00:00:00';
-        const matchedUpcoming = outlookEvents.filter(e => e.start_time >= todayPrefix && matchesQuery(e))
-          .concat(calEvents.filter(e => e.start_time >= todayPrefix && matchesQuery(e)))
-          .slice(0, 10);
-
-        // If we found matches, skip dumping the full calendar — keeps tokens low
+        // If SQL search found matches, skip full calendar dump — saves tokens
         const hasMatches = matchedUpcoming.length > 0;
-        const calUpcoming = hasMatches ? [] : calEvents.filter(e => e.start_time >= todayPrefix).slice(0, 10);
-        const workUpcoming = hasMatches ? [] : outlookEvents.filter(e => e.start_time >= todayPrefix).slice(0, 15);
+        const calUpcoming  = hasMatches ? [] : calEvents.slice(0, 10);
+        const workUpcoming = hasMatches ? [] : [];
 
         const context = `Today is ${todayLocal}. Times are in ${tzDisplay} — quote exactly, never say UTC.
 ${matchedUpcoming.length ? `\nEVENTS MATCHING QUERY:\n${matchedUpcoming.map(e => `- ${e.title} — ${fmtEvent(e.start_time)}`).join('\n')}` : ''}
