@@ -1008,75 +1008,38 @@ Priority options: URGENT, HIGH, NORMAL, BACKLOG. Today is ${today}.`;
 
         const todayLocal = new Date().toLocaleDateString('en-US', { timeZone: tz, weekday:'long', year:'numeric', month:'long', day:'numeric' });
 
-        // Split events into upcoming vs recent past so AI knows which is "next"
-        const calUpcoming  = calEvents.filter(e => e.start_time >= today + 'T00:00:00');
-        const outlookUpcoming = outlookEvents.filter(e => e.start_time >= today + 'T00:00:00');
-        const calPast      = calEvents.filter(e => e.start_time <  today + 'T00:00:00');
-        const outlookPast  = outlookEvents.filter(e => e.start_time <  today + 'T00:00:00');
+        // Keyword-matched upcoming events (searched against full untruncated titles)
+        const todayPrefix = today + 'T00:00:00';
+        const matchedUpcoming = outlookEvents.filter(e => e.start_time >= todayPrefix && matchesQuery(e))
+          .concat(calEvents.filter(e => e.start_time >= todayPrefix && matchesQuery(e)))
+          .slice(0, 10);
 
-        // Events whose full title matches any query keyword (shown untruncated, highest priority)
-        const matchedUpcoming = outlookUpcoming.filter(matchesQuery)
-          .concat(calUpcoming.filter(matchesQuery));
-        const matchedPast = outlookPast.filter(matchesQuery)
-          .concat(calEvents.filter(e => e.start_time < today + 'T00:00:00').filter(matchesQuery));
+        // If we found matches, skip dumping the full calendar — keeps tokens low
+        const hasMatches = matchedUpcoming.length > 0;
+        const calUpcoming = hasMatches ? [] : calEvents.filter(e => e.start_time >= todayPrefix).slice(0, 10);
+        const workUpcoming = hasMatches ? [] : outlookEvents.filter(e => e.start_time >= todayPrefix).slice(0, 15);
 
-        const context = `Today is ${todayLocal}. All times are in ${tzDisplay} — quote them exactly as shown.
+        const context = `Today is ${todayLocal}. Times are in ${tzDisplay} — quote exactly, never say UTC.
+${matchedUpcoming.length ? `\nEVENTS MATCHING QUERY:\n${matchedUpcoming.map(e => `- ${e.title} — ${fmtEvent(e.start_time)}`).join('\n')}` : ''}
+TASKS: ${tasks.slice(0,10).map(t => `${tr(t.title)}(${t.completed?'done':'open'})`).join(', ') || 'none'}
+${calUpcoming.length ? `PERSONAL EVENTS:\n${calUpcoming.map(e=>`- ${tr(e.title)} — ${fmtEvent(e.start_time)}`).join('\n')}` : ''}
+${workUpcoming.length ? `WORK EVENTS:\n${workUpcoming.map(e=>`- ${tr(e.title)} — ${fmtEvent(e.start_time)}`).join('\n')}` : ''}
+NOTES: ${recentNotes.map(n=>`${tr(n.title)}: ${(n.content||'').slice(0,60)}`).join(' | ') || 'none'}`;
 
-${matchedUpcoming.length ? `EVENTS MATCHING QUERY (answer from these first):
-${matchedUpcoming.map(e => `- ${e.title} — ${fmtEvent(e.start_time)}`).join('\n')}
+        const systemPrompt = `You are Cerebro, a concise personal assistant. ${context}
 
-` : ''}TASKS:
-${tasks.map(t => `- [${t.completed ? 'x' : ' '}] ${tr(t.title)} (${t.priority})${t.due_date ? ` due ${t.due_date}` : ''}`).join('\n') || 'none'}
-
-UPCOMING PERSONAL EVENTS (next 30d):
-${calUpcoming.map(e => `- ${tr(e.title)} — ${fmtEvent(e.start_time)}`).join('\n') || 'none'}
-
-UPCOMING WORK EVENTS / OUTLOOK (next 30d):
-${outlookUpcoming.map(e => `- ${tr(e.title)} — ${fmtEvent(e.start_time)}`).join('\n') || 'none'}
-
-${matchedPast.length ? `PAST EVENTS MATCHING QUERY:
-${matchedPast.map(e => `- ${e.title} — ${fmtEvent(e.start_time)}`).join('\n')}
-
-` : ''}NOTES:
-${recentNotes.map(n => `- ${tr(n.title)}: ${(n.content || '').slice(0, 80)}`).join('\n') || 'none'}`;
-
-        const systemPrompt = `You are Cerebro, a smart personal assistant. Today is ${today}.
-
-Here is the user's current data:
-${context}
-
-You can answer questions AND perform actions. When the user asks you to add/create a task or event, you MUST return valid JSON (no markdown) in this exact shape:
-{
-  "message": "Friendly confirmation message to show the user",
-  "action": {
-    "type": "create_task",
-    "data": { "title": "...", "description": "...", "priority": "NORMAL", "dueDate": "YYYY-MM-DD or null" }
-  }
-}
-OR for events:
-{
-  "message": "Friendly confirmation message",
-  "action": {
-    "type": "create_event",
-    "data": { "title": "...", "startTime": "YYYY-MM-DDTHH:MM:00", "endTime": "YYYY-MM-DDTHH:MM:00 or null", "description": "" }
-  }
-}
-
-Priority options: URGENT, HIGH, NORMAL, BACKLOG.
-Resolve relative dates to absolute YYYY-MM-DD based on today being ${today}.
-
-For all other responses return plain text — no JSON.`;
+Reply in 1-3 sentences. For create task/event return JSON: {"message":"...","action":{"type":"create_task","data":{"title":"...","priority":"NORMAL","dueDate":null}}} or {"message":"...","action":{"type":"create_event","data":{"title":"...","startTime":"YYYY-MM-DDTHH:MM:00","endTime":null}}}. Otherwise plain text only.`;
 
         const timeout = new Promise((_, reject) =>
-          setTimeout(() => reject(new Error('AI response timed out — please try again')), 25000)
+          setTimeout(() => reject(new Error('AI response timed out — please try again')), 28000)
         );
         const aiRes = await Promise.race([
-          env.AI.run('@cf/meta/llama-3.1-8b-instruct', {
+          env.AI.run('@cf/meta/llama-3.2-3b-instruct', {
             messages: [
               { role: 'system', content: systemPrompt },
               { role: 'user', content: message },
             ],
-            max_tokens: 512,
+            max_tokens: 256,
           }),
           timeout,
         ]);
