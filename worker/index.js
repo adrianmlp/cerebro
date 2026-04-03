@@ -445,6 +445,19 @@ async function syncOutlook(env) {
       ).run();
     }
 
+    // Remove events that no longer exist in Outlook (deleted upstream)
+    if (events.length > 0) {
+      const placeholders = events.map(() => '?').join(',');
+      const uids = events.map(e => e.uid);
+      await env.DB.prepare(
+        `DELETE FROM outlook_events WHERE uid NOT IN (${placeholders})`
+      ).bind(...uids).run();
+      // Also clean up any hidden entries for deleted events
+      await env.DB.prepare(
+        `DELETE FROM hidden_outlook_events WHERE uid NOT IN (${placeholders})`
+      ).bind(...uids).run();
+    }
+
     await env.DB.prepare(
       `INSERT OR REPLACE INTO settings (key, value) VALUES ('outlook_last_sync', ?)`
     ).bind(new Date().toISOString()).run();
