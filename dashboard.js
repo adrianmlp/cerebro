@@ -78,7 +78,11 @@ async function loadSchedule() {
     return;
   }
 
-  list.innerHTML = allEvents.map(e => {
+  const MAX_SHOWN = 6;
+  const shown  = allEvents.slice(0, MAX_SHOWN);
+  const hidden = allEvents.length - shown.length;
+
+  list.innerHTML = shown.map(e => {
     const isWork = e._source === 'work';
     const borderColor = isWork ? '#38BDF8' : (e.color || 'var(--violet)');
     const badge = isWork
@@ -87,11 +91,13 @@ async function loadSchedule() {
     return `
       <div class="event-chip" style="border-color:${borderColor}">
         <div class="event-chip-time">${formatTime(e.start_time)}</div>
-        <div class="event-chip-title" style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${e.title}</div>
+        <div class="event-chip-title">${e.title}</div>
         ${badge}
       </div>
     `;
-  }).join('');
+  }).join('') + (hidden > 0
+    ? `<div style="text-align:center;font-size:12px;color:var(--text-3);padding:6px 0">+${hidden} more · <a href="calendar.html" style="color:var(--violet);text-decoration:none">View calendar →</a></div>`
+    : '');
 }
 
 // ── Toggle task done ──
