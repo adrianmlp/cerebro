@@ -488,50 +488,63 @@ function generateOutlookInstances(event, rrule, rangeStart, rangeEnd) {
 
 // ── Outlook sync ──
 async function syncOutlook(env) {
-  const icsUrl = env.OUTLOOK_ICS_URL;
-  if (!icsUrl) return { ok: false, error: 'OUTLOOK_ICS_URL secret not set' };
-  try {
-    const res = await fetch(icsUrl, { headers: { 'User-Agent': 'Cerebro/1.0' } });
-    if (!res.ok) throw new Error(`ICS fetch failed: HTTP ${res.status}`);
-    const text   = await res.text();
-    const events = parseICS(text);
-
-    // Stamp every upserted row with this sync's timestamp
-    const syncTime = new Date().toISOString();
-
-    for (const ev of events) {
-      await env.DB.prepare(
-        `INSERT OR REPLACE INTO outlook_events
-         (uid, title, description, organizer, location, start_time, end_time, is_all_day, recurrence_rule, recurrence_exceptions, event_tzid, local_start, synced_at)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`
-      ).bind(
-        ev.uid, ev.title, ev.description, ev.organizer, ev.location,
-        ev.start_time, ev.end_time, ev.is_all_day,
-        ev.recurrence_rule, ev.recurrence_exceptions,
-        ev.event_tzid || null, ev.local_start || null,
-        syncTime
-      ).run();
-    }
-
-    // Delete anything not touched in this sync = deleted from Outlook
-    if (events.length > 0) {
-      await env.DB.prepare(
-        `DELETE FROM outlook_events WHERE synced_at < ?`
-      ).bind(syncTime).run();
-      // Clean up hidden entries whose source event no longer exists
-      await env.DB.prepare(
-        `DELETE FROM hidden_outlook_events WHERE uid NOT IN (SELECT uid FROM outlook_events)`
-      ).run();
-    }
-
-    await env.DB.prepare(
-      `INSERT OR REPLACE INTO settings (key, value) VALUES ('outlook_last_sync', ?)`
-    ).bind(new Date().toISOString()).run();
-
-    return { ok: true, count: events.length };
-  } catch (e) {
-    return { ok: false, error: e.message };
+  // Collect all configured ICS URLs (primary + up to 9 extras)
+  const icsUrls = [];
+  if (env.OUTLOOK_ICS_URL) icsUrls.push(env.OUTLOOK_ICS_URL);
+  for (let i = 2; i <= 10; i++) {
+    const extra = env[`OUTLOOK_ICS_URL_${i}`];
+    if (extra) icsUrls.push(extra);
   }
+  if (icsUrls.length === 0) return { ok: false, error: 'OUTLOOK_ICS_URL secret not set' };
+
+  const syncTime = new Date().toISOString();
+  const errors = [];
+  let totalCount = 0;
+
+  for (const icsUrl of icsUrls) {
+    try {
+      const res = await fetch(icsUrl, { headers: { 'User-Agent': 'Cerebro/1.0' } });
+      if (!res.ok) throw new Error(`ICS fetch failed: HTTP ${res.status}`);
+      const text   = await res.text();
+      const events = parseICS(text);
+
+      for (const ev of events) {
+        await env.DB.prepare(
+          `INSERT OR REPLACE INTO outlook_events
+           (uid, title, description, organizer, location, start_time, end_time, is_all_day, recurrence_rule, recurrence_exceptions, event_tzid, local_start, synced_at)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`
+        ).bind(
+          ev.uid, ev.title, ev.description, ev.organizer, ev.location,
+          ev.start_time, ev.end_time, ev.is_all_day,
+          ev.recurrence_rule, ev.recurrence_exceptions,
+          ev.event_tzid || null, ev.local_start || null,
+          syncTime
+        ).run();
+      }
+      totalCount += events.length;
+    } catch (e) {
+      errors.push(e.message);
+    }
+  }
+
+  // Delete events not touched by any calendar in this sync = removed from Outlook
+  if (totalCount > 0) {
+    await env.DB.prepare(
+      `DELETE FROM outlook_events WHERE synced_at < ?`
+    ).bind(syncTime).run();
+    await env.DB.prepare(
+      `DELETE FROM hidden_outlook_events WHERE uid NOT IN (SELECT uid FROM outlook_events)`
+    ).run();
+  }
+
+  await env.DB.prepare(
+    `INSERT OR REPLACE INTO settings (key, value) VALUES ('outlook_last_sync', ?)`
+  ).bind(new Date().toISOString()).run();
+
+  if (errors.length && totalCount === 0) {
+    return { ok: false, error: errors.join('; ') };
+  }
+  return { ok: true, count: totalCount, calendars: icsUrls.length, errors: errors.length ? errors : undefined };
 }
 
 // ── Reusable Outlook event fetcher (used by both the API route and chat context) ──
@@ -605,6 +618,106 @@ function generateRecurringInstances(event, rangeStart, rangeEnd, exceptionMap) {
     cur = advanceDatePersonal(cur, event.recurrence_type);
   }
   return instances;
+}
+
+// ── Daily Brief: external data helpers ──
+
+async function briefFetchStocks(tickerStr) {
+  if (!tickerStr.trim()) return [];
+  const symbols = tickerStr.split(',').map(s => s.trim().toUpperCase()).filter(Boolean).slice(0, 12);
+  if (!symbols.length) return [];
+  try {
+    const res = await fetch(
+      `https://query1.finance.yahoo.com/v7/finance/quote?symbols=${symbols.join(',')}&fields=regularMarketPrice,regularMarketChange,regularMarketChangePercent,shortName`,
+      { headers: { 'User-Agent': 'Mozilla/5.0', 'Accept': 'application/json' }, cf: { cacheTtl: 300 } }
+    );
+    if (!res.ok) return [];
+    const data = await res.json();
+    return (data.quoteResponse?.result || []).map(q => ({
+      symbol:        q.symbol,
+      name:          q.shortName || q.symbol,
+      price:         q.regularMarketPrice,
+      change:        q.regularMarketChange,
+      changePercent: q.regularMarketChangePercent,
+    }));
+  } catch { return []; }
+}
+
+async function briefFetchSports(teamStr) {
+  if (!teamStr.trim()) return [];
+  const teams = teamStr.split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
+  if (!teams.length) return [];
+
+  const leagues = [
+    ['football',   'nfl'],
+    ['basketball', 'nba'],
+    ['baseball',   'mlb'],
+    ['hockey',     'nhl'],
+    ['soccer',     'usa.1'],    // MLS
+    ['basketball', 'wnba'],
+    ['football',   'college-football'],
+    ['basketball', 'mens-college-basketball'],
+  ];
+
+  const settled = await Promise.allSettled(
+    leagues.map(([sport, league]) =>
+      fetch(`https://site.api.espn.com/apis/site/v2/sports/${sport}/${league}/scoreboard`,
+        { headers: { 'User-Agent': 'Mozilla/5.0' }, cf: { cacheTtl: 180 } })
+      .then(r => r.ok ? r.json() : { events: [] })
+      .then(data => (data.events || []).map(ev => {
+        const comp = ev.competitions?.[0];
+        const home = comp?.competitors?.find(c => c.homeAway === 'home');
+        const away = comp?.competitors?.find(c => c.homeAway === 'away');
+        return {
+          league,
+          home:      home?.team?.displayName || '',
+          away:      away?.team?.displayName || '',
+          homeScore: home?.score ?? '',
+          awayScore: away?.score ?? '',
+          status:    comp?.status?.type?.description || '',
+          date:      ev.date || '',
+        };
+      }))
+    )
+  );
+
+  const allGames = settled.flatMap(r => r.status === 'fulfilled' ? r.value : []);
+
+  return allGames.filter(g => {
+    const hn = g.home.toLowerCase();
+    const an = g.away.toLowerCase();
+    return teams.some(t => hn.includes(t) || an.includes(t) || hn.split(' ').some(w => t.includes(w) && w.length > 3) || an.split(' ').some(w => t.includes(w) && w.length > 3));
+  });
+}
+
+async function briefFetchNews(topicStr) {
+  if (!topicStr.trim()) return [];
+  const topics = topicStr.split(',').map(s => s.trim()).filter(Boolean).slice(0, 4);
+  if (!topics.length) return [];
+
+  const items = [];
+  await Promise.allSettled(
+    topics.map(async topic => {
+      try {
+        const res = await fetch(
+          `https://news.google.com/rss/search?q=${encodeURIComponent(topic)}&hl=en-US&gl=US&ceid=US:en`,
+          { headers: { 'User-Agent': 'Mozilla/5.0' }, cf: { cacheTtl: 600 } }
+        );
+        if (!res.ok) return;
+        const text = await res.text();
+        const matches = [...text.matchAll(/<item>([\s\S]*?)<\/item>/g)];
+        for (const [, block] of matches.slice(0, 3)) {
+          const raw = t => t?.replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&#39;/g,"'").replace(/&quot;/g,'"') || '';
+          const title   = raw(block.match(/<title>(?:<!\[CDATA\[)?(.*?)(?:\]\]>)?<\/title>/)?.[1]);
+          const link    = block.match(/<link>(.*?)<\/link>/)?.[1] || block.match(/<guid[^>]*>(https?:\/\/[^<]+)<\/guid>/)?.[1] || '';
+          const source  = raw(block.match(/<source[^>]*>(.*?)<\/source>/)?.[1]);
+          const pubDate = block.match(/<pubDate>(.*?)<\/pubDate>/)?.[1] || '';
+          if (title) items.push({ title, link, source, pubDate, topic });
+        }
+      } catch { /* skip */ }
+    })
+  );
+  return items;
 }
 
 // ── Router ──
@@ -877,6 +990,17 @@ async function handleRequest(request, env) {
         return json({ lastSync: row?.value || null });
       }
 
+      // Debug: search outlook_events by title substring (auth required)
+      if (seg[1] === 'outlook' && seg[2] === 'search' && method === 'GET') {
+        if (!checkAuth(request, env)) return json({ error: 'Unauthorized' }, 401);
+        const q = url.searchParams.get('q') || '';
+        const { results } = await env.DB.prepare(
+          `SELECT uid, title, start_time, recurrence_rule, event_tzid, local_start FROM outlook_events WHERE LOWER(title) LIKE ? LIMIT 20`
+        ).bind(`%${q.toLowerCase()}%`).all();
+        const total = await env.DB.prepare(`SELECT COUNT(*) as n FROM outlook_events`).first();
+        return json({ total: total?.n, matches: results });
+      }
+
       // ──────────────────────────────
       // NOTES (standalone)
       // ──────────────────────────────
@@ -973,13 +1097,14 @@ Priority options: URGENT, HIGH, NORMAL, BACKLOG. Today is ${today}.`;
           message.toLowerCase().split(/\W+/).filter(w => w.length > 1 && !STOPWORDS.has(w))
         )];
 
-        // SQL keyword search directly against base event titles (reliable, no instance-gen needed first)
+        // Keyword search: find matching base events (newest first), generate their upcoming instances.
+        // ORDER BY start_time DESC ensures we find the active/latest series before expired older ones.
         let sqlMatched = [];
         if (queryKeywords.length) {
           const likeClause = queryKeywords.map(() => 'LOWER(title) LIKE ?').join(' OR ');
           const likeArgs   = queryKeywords.map(k => `%${k}%`);
           const { results: baseMatches } = await env.DB.prepare(
-            `SELECT * FROM outlook_events WHERE ${likeClause} LIMIT 10`
+            `SELECT * FROM outlook_events WHERE ${likeClause} ORDER BY start_time DESC LIMIT 20`
           ).bind(...likeArgs).all();
           for (const base of baseMatches) {
             if (base.recurrence_rule) {
@@ -1006,7 +1131,7 @@ Priority options: URGENT, HIGH, NORMAL, BACKLOG. Today is ${today}.`;
           ).bind(today, futureDate).all(),
           env.DB.prepare(`SELECT title, content FROM notes WHERE event_id IS NULL ORDER BY updated_at DESC LIMIT 5`).all(),
           // Fallback: all base event titles so AI can fuzzy-match by context
-          env.DB.prepare(`SELECT uid, title, start_time, recurrence_rule, event_tzid, local_start FROM outlook_events LIMIT 60`).all(),
+          env.DB.prepare(`SELECT uid, title, start_time, recurrence_rule, event_tzid, local_start FROM outlook_events ORDER BY start_time DESC LIMIT 60`).all(),
         ]);
 
         const tr = s => (s || '').length > 60 ? s.slice(0, 60) + '…' : (s || '');
@@ -1021,25 +1146,17 @@ Priority options: URGENT, HIGH, NORMAL, BACKLOG. Today is ${today}.`;
         const todayLocal = new Date().toLocaleDateString('en-US', { timeZone: tz, weekday:'long', year:'numeric', month:'long', day:'numeric' });
         const matchedUpcoming = sqlMatched.filter(e => (e.start_time||'') >= todayPrefix).slice(0, 8);
 
-        // If SQL search found no matches, generate upcoming instances from all base events
+        // If SQL search found no matches, fetch upcoming work events (7-day window to stay fast)
         const hasMatches = matchedUpcoming.length > 0;
         const calUpcoming = calEvents.slice(0, 10);
         let workUpcoming = [];
         if (!hasMatches) {
-          for (const base of outlookBase) {
-            if (base.recurrence_rule) {
-              const rr = parseRRule(base.recurrence_rule);
-              if (rr) {
-                const instances = generateOutlookInstances(base, rr, today, futureDate);
-                workUpcoming.push(...instances.slice(0, 2));
-              }
-            } else if (base.start_time >= todayPrefix) {
-              workUpcoming.push(base);
-            }
-            if (workUpcoming.length >= 20) break;
+          const nearFuture = new Date(Date.now() + 7 * 86400000).toISOString().split('T')[0];
+          workUpcoming = (await fetchOutlookEventsInRange(env, today, nearFuture)).slice(0, 20);
+          if (workUpcoming.length === 0) {
+            // Nothing this week — try the full 30-day window
+            workUpcoming = (await fetchOutlookEventsInRange(env, today, futureDate)).slice(0, 20);
           }
-          workUpcoming.sort((a,b) => (a.start_time||'').localeCompare(b.start_time||''));
-          workUpcoming = workUpcoming.slice(0, 20);
         }
 
         const context = `Today is ${todayLocal}. Times are in ${tzDisplay} — quote exactly, never say UTC.
@@ -1094,6 +1211,67 @@ Reply in 1-3 sentences. For create task/event return JSON: {"message":"...","act
         }
 
         return json({ type: 'chat', message: raw });
+      }
+
+      // ──────────────────────────────
+      // DAILY BRIEF
+      // ──────────────────────────────
+
+      // Settings: GET / PUT
+      if (seg[1] === 'brief' && seg[2] === 'settings') {
+        if (!checkAuth(request, env)) return json({ error: 'Unauthorized' }, 401);
+        if (method === 'GET') {
+          const [t, te, to] = await Promise.all([
+            env.DB.prepare('SELECT value FROM settings WHERE key=?').bind('brief_tickers').first(),
+            env.DB.prepare('SELECT value FROM settings WHERE key=?').bind('brief_teams').first(),
+            env.DB.prepare('SELECT value FROM settings WHERE key=?').bind('brief_topics').first(),
+          ]);
+          return json({ tickers: t?.value||'', teams: te?.value||'', topics: to?.value||'' });
+        }
+        if (method === 'PUT') {
+          const { tickers='', teams='', topics='' } = await request.json();
+          await Promise.all([
+            env.DB.prepare('INSERT OR REPLACE INTO settings (key,value) VALUES (?,?)').bind('brief_tickers', tickers).run(),
+            env.DB.prepare('INSERT OR REPLACE INTO settings (key,value) VALUES (?,?)').bind('brief_teams', teams).run(),
+            env.DB.prepare('INSERT OR REPLACE INTO settings (key,value) VALUES (?,?)').bind('brief_topics', topics).run(),
+          ]);
+          return json({ ok: true });
+        }
+      }
+
+      // Main brief endpoint
+      if (seg[1] === 'brief' && !seg[2] && method === 'GET') {
+        if (!checkAuth(request, env)) return json({ error: 'Unauthorized' }, 401);
+
+        const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Los_Angeles' }).format(new Date());
+
+        // Load settings + D1 data in parallel
+        const [tickerRow, teamRow, topicRow, { results: dueTasks }, personalEvRes, outlookEvRes] = await Promise.all([
+          env.DB.prepare('SELECT value FROM settings WHERE key=?').bind('brief_tickers').first(),
+          env.DB.prepare('SELECT value FROM settings WHERE key=?').bind('brief_teams').first(),
+          env.DB.prepare('SELECT value FROM settings WHERE key=?').bind('brief_topics').first(),
+          env.DB.prepare(`SELECT title, priority FROM tasks WHERE completed=0 AND due_date=? ORDER BY priority`).bind(today).all(),
+          (async () => {
+            try {
+              const r = await fetch(`${url.origin}/api/events?start=${today}&end=${today}`, { headers: request.headers });
+              return r.ok ? r.json() : { events: [] };
+            } catch { return { events: [] }; }
+          })(),
+          (async () => { try { return await fetchOutlookEventsInRange(env, today, today); } catch { return []; } })(),
+        ]);
+
+        const personalEv = (personalEvRes.events || []).map(e => ({ title: e.title, start_time: e.start_time }));
+        const workEv     = Array.isArray(outlookEvRes) ? outlookEvRes.map(e => ({ title: e.title, start_time: e.start_time })) : [];
+        const meetings   = [...personalEv, ...workEv].sort((a,b)=>(a.start_time||'').localeCompare(b.start_time||''));
+
+        // Fetch external data in parallel
+        const [stocks, sports, news] = await Promise.all([
+          briefFetchStocks(tickerRow?.value || ''),
+          briefFetchSports(teamRow?.value   || ''),
+          briefFetchNews(topicRow?.value    || ''),
+        ]);
+
+        return json({ dueToday: dueTasks, meetings, stocks, sports, news });
       }
 
       return json({ error: 'Not found' }, 404);

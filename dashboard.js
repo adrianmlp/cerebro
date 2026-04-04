@@ -286,6 +286,159 @@ document.getElementById('chat-collapse-btn').addEventListener('click', collapseC
 chatFullscreen.addEventListener('click', e => { if (e.target === chatFullscreen) collapseChat(); });
 document.addEventListener('keydown', e => { if (e.key === 'Escape' && chatFullscreen.classList.contains('open')) collapseChat(); });
 
+// ── Daily Brief ──
+const PRIORITY_DOT = { URGENT: 'URGENT', HIGH: 'HIGH', NORMAL: 'NORMAL', BACKLOG: 'BACKLOG' };
+
+function briefFmtTime(iso) {
+  if (!iso) return '';
+  try {
+    return new Date(iso).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+  } catch { return ''; }
+}
+
+function briefFmtChange(val) {
+  if (val == null) return '';
+  const sign = val >= 0 ? '+' : '';
+  return `${sign}${val.toFixed(2)}%`;
+}
+
+async function loadBrief() {
+  const body = document.getElementById('brief-body');
+  const subtitle = document.getElementById('brief-subtitle');
+  try {
+    const data = await apiFetch('/api/brief');
+
+    // Sections: due today
+    const dueSec = data.dueToday?.length
+      ? `<div class="brief-due-list">${data.dueToday.slice(0,5).map(t=>`
+          <div class="brief-due-item">
+            <div class="brief-due-dot ${PRIORITY_DOT[t.priority]||'NORMAL'}"></div>
+            <span>${t.title}</span>
+          </div>`).join('')}
+          ${data.dueToday.length > 5 ? `<div class="brief-empty">+${data.dueToday.length-5} more</div>` : ''}
+        </div>`
+      : `<div class="brief-empty">Nothing due today</div>`;
+
+    // Meetings
+    const meetSec = data.meetings?.length
+      ? `<div class="brief-meeting-list">${data.meetings.slice(0,5).map(e=>`
+          <div class="brief-meeting-item">
+            <span class="brief-meeting-time">${briefFmtTime(e.start_time)}</span>
+            <span class="brief-meeting-title">${e.title}</span>
+          </div>`).join('')}
+          ${data.meetings.length > 5 ? `<div class="brief-empty">+${data.meetings.length-5} more</div>` : ''}
+        </div>`
+      : `<div class="brief-empty">No meetings today</div>`;
+
+    // Stocks
+    const stockSec = data.stocks?.length
+      ? `<div class="brief-stocks">${data.stocks.map(s => {
+          const up = (s.changePercent || 0) >= 0;
+          return `<div class="brief-stock">
+            <span class="brief-stock-symbol">${s.symbol}</span>
+            <span class="brief-stock-price">$${(s.price||0).toFixed(2)}</span>
+            <span class="brief-stock-change ${up?'up':'down'}">${briefFmtChange(s.changePercent)}</span>
+          </div>`;
+        }).join('')}</div>`
+      : `<div class="brief-empty">No tickers configured — click ⚙ Settings to add some</div>`;
+
+    // Sports
+    const sportSec = data.sports?.length
+      ? `<div class="brief-sports">${data.sports.map(g => {
+          const hasScore = g.homeScore !== '' && g.awayScore !== '';
+          return `<div class="brief-score">
+            <div class="brief-score-teams">
+              <span>${g.away}</span>
+              ${hasScore ? `<span class="brief-score-nums">${g.awayScore}–${g.homeScore}</span>` : '<span class="brief-score-vs">@</span>'}
+              <span>${g.home}</span>
+            </div>
+            <div class="brief-score-status">${g.status || (hasScore ? '' : briefFmtTime(g.date))}</div>
+            <span class="brief-score-badge">${g.league.toUpperCase()}</span>
+          </div>`;
+        }).join('')}</div>`
+      : `<div class="brief-empty">No teams configured — click ⚙ Settings to add some</div>`;
+
+    // News
+    const newsSec = data.news?.length
+      ? `<div class="brief-news">${data.news.map(n => `
+          <div class="brief-news-item">
+            <div class="brief-news-bullet">•</div>
+            <div class="brief-news-content">
+              <a class="brief-news-title" href="${n.link}" target="_blank" rel="noopener">${n.title}</a>
+              <div class="brief-news-meta">
+                ${n.topic ? `<span class="brief-news-topic">${n.topic}</span>` : ''}
+                ${n.source || ''}
+              </div>
+            </div>
+          </div>`).join('')}</div>`
+      : `<div class="brief-empty">No news topics configured — click ⚙ Settings to add some</div>`;
+
+    body.innerHTML = `<div class="brief-grid">
+      <div class="brief-top-row">
+        <div>
+          <div class="brief-section-label">📌 Due Today</div>
+          ${dueSec}
+        </div>
+        <div>
+          <div class="brief-section-label">📅 Today's Meetings</div>
+          ${meetSec}
+        </div>
+      </div>
+      <div>
+        <div class="brief-section-label">📈 Stocks</div>
+        ${stockSec}
+      </div>
+      <div>
+        <div class="brief-section-label">🏆 Scores</div>
+        ${sportSec}
+      </div>
+      <div>
+        <div class="brief-section-label">📰 News</div>
+        ${newsSec}
+      </div>
+    </div>`;
+
+    const now = new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+    subtitle.textContent = `Updated ${now}`;
+  } catch (e) {
+    body.innerHTML = `<div class="brief-empty">Failed to load brief: ${e.message}</div>`;
+    subtitle.textContent = 'Error';
+  }
+}
+
+// Brief settings
+document.getElementById('brief-settings-btn').addEventListener('click', async () => {
+  try {
+    const s = await apiFetch('/api/brief/settings');
+    document.getElementById('brief-tickers-input').value = s.tickers || '';
+    document.getElementById('brief-teams-input').value   = s.teams   || '';
+    document.getElementById('brief-topics-input').value  = s.topics  || '';
+  } catch { /* prefill blank */ }
+  openModal('brief-settings-modal');
+});
+
+document.getElementById('brief-settings-save').addEventListener('click', async () => {
+  try {
+    await apiFetch('/api/brief/settings', {
+      method: 'PUT',
+      body: JSON.stringify({
+        tickers: document.getElementById('brief-tickers-input').value.trim(),
+        teams:   document.getElementById('brief-teams-input').value.trim(),
+        topics:  document.getElementById('brief-topics-input').value.trim(),
+      }),
+    });
+    closeModal('brief-settings-modal');
+    toast('Settings saved', 'success');
+    loadBrief();
+  } catch (e) { toast(e.message, 'error'); }
+});
+
+document.getElementById('brief-refresh-btn').addEventListener('click', () => {
+  document.getElementById('brief-subtitle').textContent = 'Refreshing…';
+  loadBrief();
+});
+
 // ── Init ──
 loadTasks().catch(e => toast(e.message, 'error'));
 loadSchedule().catch(e => toast(e.message, 'error'));
+loadBrief().catch(e => toast(e.message, 'error'));

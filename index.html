@@ -68,6 +68,24 @@
 
   </div>
 
+  <!-- Daily Brief card -->
+  <div class="card" id="brief-card">
+    <div class="card-header">
+      <div class="card-icon amber">📋</div>
+      <div>
+        <div class="card-title">Daily Brief</div>
+        <div class="card-subtitle" id="brief-subtitle">Loading…</div>
+      </div>
+      <div class="card-actions">
+        <button class="btn btn-ghost btn-sm" id="brief-refresh-btn">↺</button>
+        <button class="btn btn-ghost btn-sm" id="brief-settings-btn">⚙ Settings</button>
+      </div>
+    </div>
+    <div class="card-body" id="brief-body">
+      <div class="brief-loading">Loading brief…</div>
+    </div>
+  </div>
+
   <!-- AI Chat card -->
   <div class="card" id="chat-card">
     <div class="card-header">
@@ -119,6 +137,34 @@
   </div>
 
 </main>
+
+<!-- ── Daily Brief Settings Modal ── -->
+<div class="modal-backdrop" id="brief-settings-modal">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title">Daily Brief Settings</div>
+      <button class="btn-icon" onclick="closeModal('brief-settings-modal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label class="form-label">Stock Tickers <span class="form-hint">comma-separated</span></label>
+        <input class="input" id="brief-tickers-input" placeholder="AAPL, MSFT, GOOGL, TSLA" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Sports Teams <span class="form-hint">comma-separated team names</span></label>
+        <input class="input" id="brief-teams-input" placeholder="Lakers, Bears, Cubs, Blackhawks" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">News Topics <span class="form-hint">comma-separated search terms</span></label>
+        <input class="input" id="brief-topics-input" placeholder="restaurant technology, food delivery, AI" />
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('brief-settings-modal')">Cancel</button>
+      <button class="btn btn-primary" id="brief-settings-save">Save Settings</button>
+    </div>
+  </div>
+</div>
 
 <!-- ── Task Quick-Add Modal ── -->
 <div class="modal-backdrop" id="task-modal">
