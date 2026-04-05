@@ -62,7 +62,7 @@ GET/PUT         /api/brief/settings
 ```
 
 ### Daily Brief
-`GET /api/brief` fetches in parallel: Yahoo Finance (stocks), ESPN API (sports), Google News RSS (news), D1 (due tasks + today's meetings). Results cached at Cloudflare edge (stocks 5min, sports 3min, news 10min).
+`GET /api/brief` fetches in parallel: Yahoo Finance v8 chart API (stocks), ESPN API (sports), Bing News RSS w/ Google fallback (news), D1 (due tasks + today's meetings).
 
 ### Recurring Events
 - Personal: `recurrence_type` field, instances generated on-demand
@@ -76,3 +76,7 @@ Two modes: `chat` (conversational, can create tasks/events) and `transcript` (ex
 
 ## Applied Learning
 When something fails repeatedly, when Adrian has to re-explain, or when a workaround is found for a platform/tool limitation, add a one-line bullet here. Keep each bullet under 15 words. No explanations. Only add things that will save time in future sessions.
+
+- Google News RSS blocks Cloudflare Worker IPs on some edge regions; use Bing RSS instead.
+- Yahoo Finance v7 `/quote` requires crumb/cookie; use v8 `/chart/{symbol}` per-symbol instead.
+- Don't use `cf: { cacheTtl }` on external fetches that may fail — caches the failure.
