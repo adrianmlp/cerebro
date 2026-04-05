@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Saving…</title>
+  <meta name="worker-url" content="https://cerebro-worker.mlpdev.workers.dev" />
+  <link rel="stylesheet" href="style.css" />
+  <style>
+    body { display:flex; align-items:center; justify-content:center; min-height:100vh; background:var(--bg); }
+    .share-box { background:var(--card-from); border:1px solid var(--border); border-radius:var(--r-card); padding:32px; max-width:420px; width:100%; text-align:center; }
+    .share-icon { font-size:48px; margin-bottom:16px; }
+    .share-title { font-size:18px; font-weight:600; color:var(--text); margin-bottom:8px; }
+    .share-url { font-size:13px; color:var(--text-3); word-break:break-all; margin-bottom:20px; }
+    .share-status { font-size:14px; color:var(--text-2); margin-bottom:20px; }
+    .share-tags { width:100%; margin-bottom:16px; }
+  </style>
+</head>
+<body>
+<div class="share-box">
+  <div class="share-icon">🔖</div>
+  <div class="share-title" id="share-title">Saving…</div>
+  <div class="share-url" id="share-url"></div>
+  <div class="share-status" id="share-status"></div>
+  <input class="input share-tags" id="share-tags" placeholder="Tags (comma-separated)" />
+  <div style="display:flex;gap:8px;justify-content:center">
+    <button class="btn btn-primary" id="confirm-btn">Save</button>
+    <a class="btn btn-ghost" href="saves.html">View Saves</a>
+  </div>
+</div>
+
+<script type="module">
+  import { apiFetch, toast } from './api.js';
+
+  const params = new URLSearchParams(window.location.search);
+  const url   = params.get('url')   || params.get('text') || '';
+  const title = params.get('title') || '';
+
+  document.getElementById('share-title').textContent = title || 'Save to Cerebro';
+  document.getElementById('share-url').textContent   = url;
+
+  if (!url) {
+    document.getElementById('share-status').textContent = 'No URL provided.';
+    document.getElementById('confirm-btn').disabled = true;
+  }
+
+  document.getElementById('confirm-btn').addEventListener('click', async () => {
+    const tags = document.getElementById('share-tags').value.trim();
+    const btn  = document.getElementById('confirm-btn');
+    btn.disabled = true;
+    btn.textContent = 'Saving…';
+    document.getElementById('share-status').textContent = 'Fetching page info…';
+    try {
+      await apiFetch('/api/saves', { method: 'POST', body: JSON.stringify({ url, title, tags }) });
+      document.getElementById('share-title').textContent = 'Saved!';
+      document.getElementById('share-status').textContent = 'Successfully saved to Cerebro.';
+      btn.textContent = 'Saved ✓';
+      setTimeout(() => { window.close(); }, 1500);
+    } catch (e) {
+      document.getElementById('share-status').textContent = 'Error: ' + e.message;
+      btn.disabled = false;
+      btn.textContent = 'Retry';
+    }
+  });
+</script>
+</body>
+</html>

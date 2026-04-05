@@ -64,6 +64,17 @@ async function runMigrations(env) {
       key TEXT PRIMARY KEY,
       value TEXT
     )`,
+    `CREATE TABLE IF NOT EXISTS saves (
+      id TEXT PRIMARY KEY,
+      url TEXT NOT NULL,
+      title TEXT DEFAULT '',
+      description TEXT DEFAULT '',
+      thumbnail TEXT DEFAULT '',
+      type TEXT DEFAULT 'link',
+      tags TEXT DEFAULT '',
+      is_read INTEGER DEFAULT 0,
+      created_at TEXT DEFAULT (datetime('now'))
+    )`,
   ];
   for (const sql of stmts) {
     try { await env.DB.prepare(sql).run(); } catch (e) {}
@@ -72,6 +83,51 @@ async function runMigrations(env) {
   try { await env.DB.prepare(`ALTER TABLE notes ADD COLUMN tags TEXT DEFAULT ''`).run(); } catch(e) {}
   try { await env.DB.prepare(`ALTER TABLE outlook_events ADD COLUMN event_tzid TEXT`).run(); } catch(e) {}
   try { await env.DB.prepare(`ALTER TABLE outlook_events ADD COLUMN local_start TEXT`).run(); } catch(e) {}
+}
+
+// ── Save metadata fetcher ──
+async function fetchSaveMeta(url) {
+  const meta = { title: '', description: '', thumbnail: '', type: 'link' };
+  try {
+    // YouTube
+    const ytMatch = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([a-zA-Z0-9_-]{11})/);
+    if (ytMatch) {
+      meta.type = 'video';
+      const oembed = await fetch(`https://www.youtube.com/oembed?url=${encodeURIComponent(url)}&format=json`);
+      if (oembed.ok) {
+        const d = await oembed.json();
+        meta.title = d.title || '';
+        meta.thumbnail = d.thumbnail_url || `https://img.youtube.com/vi/${ytMatch[1]}/hqdefault.jpg`;
+        meta.description = d.author_name ? `by ${d.author_name}` : '';
+      }
+      return meta;
+    }
+    // General OG/meta extraction
+    const res = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0 (compatible; Cerebro/1.0)' } });
+    if (!res.ok) return meta;
+    const html = await res.text();
+    const og = (prop) => {
+      const m = html.match(new RegExp(`<meta[^>]+property=["']og:${prop}["'][^>]+content=["']([^"']+)["']`, 'i'))
+               || html.match(new RegExp(`<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:${prop}["']`, 'i'));
+      return m ? m[1] : '';
+    };
+    const metaName = (name) => {
+      const m = html.match(new RegExp(`<meta[^>]+name=["']${name}["'][^>]+content=["']([^"']+)["']`, 'i'))
+               || html.match(new RegExp(`<meta[^>]+content=["']([^"']+)["'][^>]+name=["']${name}["']`, 'i'));
+      return m ? m[1] : '';
+    };
+    const titleTag = (html.match(/<title[^>]*>([^<]+)<\/title>/i) || [])[1] || '';
+    meta.title = og('title') || metaName('title') || titleTag;
+    meta.description = og('description') || metaName('description') || '';
+    meta.thumbnail = og('image') || '';
+    // Detect type
+    const ct = res.headers.get('content-type') || '';
+    if (ct.includes('video') || url.match(/\.(mp4|webm|mov)$/i)) meta.type = 'video';
+    else if (ct.includes('text/html')) meta.type = 'article';
+    // Trim
+    if (meta.description.length > 300) meta.description = meta.description.slice(0, 297) + '...';
+  } catch {}
+  return meta;
 }
 
 // ── ICS Parser ──
@@ -1235,6 +1291,60 @@ Reply in 1-3 sentences. For create task/event return JSON: {"message":"...","act
             env.DB.prepare('INSERT OR REPLACE INTO settings (key,value) VALUES (?,?)').bind('brief_teams', teams).run(),
             env.DB.prepare('INSERT OR REPLACE INTO settings (key,value) VALUES (?,?)').bind('brief_topics', topics).run(),
           ]);
+          return json({ ok: true });
+        }
+      }
+
+      // ── Saves ──
+      if (seg[1] === 'saves') {
+        if (!checkAuth(request, env)) return json({ error: 'Unauthorized' }, 401);
+
+        if (!seg[2] && method === 'GET') {
+          const tag    = url.searchParams.get('tag')    || '';
+          const type   = url.searchParams.get('type')   || '';
+          const unread = url.searchParams.get('unread') || '';
+          const search = url.searchParams.get('search') || '';
+          let q = 'SELECT * FROM saves WHERE 1=1';
+          const params = [];
+          if (tag)    { q += " AND (',' || tags || ',' LIKE ?)"; params.push(`%,${tag},%`); }
+          if (type)   { q += ' AND type=?'; params.push(type); }
+          if (unread) { q += ' AND is_read=0'; }
+          if (search) { q += ' AND (title LIKE ? OR url LIKE ? OR tags LIKE ?)'; params.push(`%${search}%`, `%${search}%`, `%${search}%`); }
+          q += ' ORDER BY created_at DESC';
+          const stmt = env.DB.prepare(q);
+          const { results } = params.length ? await stmt.bind(...params).all() : await stmt.all();
+          return json(results);
+        }
+
+        if (!seg[2] && method === 'POST') {
+          const body = await request.json();
+          if (!body.url) return json({ error: 'url required' }, 400);
+          const id   = crypto.randomUUID();
+          const meta = await fetchSaveMeta(body.url);
+          const title = body.title || meta.title || body.url;
+          const tags  = (body.tags || '').toLowerCase().trim();
+          await env.DB.prepare(
+            `INSERT INTO saves (id, url, title, description, thumbnail, type, tags) VALUES (?,?,?,?,?,?,?)`
+          ).bind(id, body.url, title, meta.description, meta.thumbnail, meta.type, tags).run();
+          return json({ id, url: body.url, title, description: meta.description, thumbnail: meta.thumbnail, type: meta.type, tags, is_read: 0 }, 201);
+        }
+
+        if (seg[2] && method === 'PATCH') {
+          const id = seg[2];
+          const body = await request.json();
+          const fields = [];
+          const params = [];
+          if ('title'   in body) { fields.push('title=?');   params.push(body.title); }
+          if ('tags'    in body) { fields.push('tags=?');     params.push((body.tags||'').toLowerCase().trim()); }
+          if ('is_read' in body) { fields.push('is_read=?'); params.push(body.is_read ? 1 : 0); }
+          if (!fields.length) return json({ error: 'Nothing to update' }, 400);
+          params.push(id);
+          await env.DB.prepare(`UPDATE saves SET ${fields.join(',')} WHERE id=?`).bind(...params).run();
+          return json({ ok: true });
+        }
+
+        if (seg[2] && method === 'DELETE') {
+          await env.DB.prepare('DELETE FROM saves WHERE id=?').bind(seg[2]).run();
           return json({ ok: true });
         }
       }

@@ -1,0 +1,20 @@
+{
+  "name": "Cerebro",
+  "short_name": "Cerebro",
+  "start_url": "/index.html",
+  "display": "standalone",
+  "background_color": "#0F1117",
+  "theme_color": "#6366F1",
+  "icons": [
+    { "src": "favicon.ico", "sizes": "any" }
+  ],
+  "share_target": {
+    "action": "/save.html",
+    "method": "GET",
+    "params": {
+      "title": "title",
+      "text": "text",
+      "url": "url"
+    }
+  }
+}
