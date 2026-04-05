@@ -713,25 +713,52 @@ async function briefFetchNews(topicStr) {
   const topics = topicStr.split(',').map(s => s.trim()).filter(Boolean).slice(0, 4);
   if (!topics.length) return [];
 
+  const raw = t => t?.replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&#39;/g,"'").replace(/&quot;/g,'"').replace(/<[^>]+>/g,'') || '';
+
+  async function fetchFromBing(topic) {
+    const res = await fetch(
+      `https://www.bing.com/news/search?q=${encodeURIComponent(topic)}&format=RSS&mkt=en-US&count=5`,
+      { headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36', 'Accept-Language': 'en-US,en;q=0.9' } }
+    );
+    if (!res.ok) return [];
+    const text = await res.text();
+    const results = [];
+    for (const [, block] of [...text.matchAll(/<item>([\s\S]*?)<\/item>/g)].slice(0, 3)) {
+      const title   = raw(block.match(/<title>(?:<!\[CDATA\[)?(.*?)(?:\]\]>)?<\/title>/)?.[1]);
+      const link    = block.match(/<link\s*\/?>(.*?)<\/link>/)?.[1]?.trim() || block.match(/<guid[^>]*>(https?:\/\/[^<]+)<\/guid>/)?.[1] || '';
+      const source  = raw(block.match(/<source[^>]*>(.*?)<\/source>/)?.[1]) || raw(block.match(/<provider[^>]*>(.*?)<\/provider>/)?.[1]) || '';
+      const pubDate = block.match(/<pubDate>(.*?)<\/pubDate>/)?.[1] || '';
+      if (title) results.push({ title, link, source, pubDate, topic });
+    }
+    return results;
+  }
+
+  async function fetchFromGoogle(topic) {
+    const res = await fetch(
+      `https://news.google.com/rss/search?q=${encodeURIComponent(topic)}&hl=en-US&gl=US&ceid=US:en`,
+      { headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36' } }
+    );
+    if (!res.ok) return [];
+    const text = await res.text();
+    const results = [];
+    for (const [, block] of [...text.matchAll(/<item>([\s\S]*?)<\/item>/g)].slice(0, 3)) {
+      const title   = raw(block.match(/<title>(?:<!\[CDATA\[)?(.*?)(?:\]\]>)?<\/title>/)?.[1]);
+      const link    = block.match(/<link>(.*?)<\/link>/)?.[1] || block.match(/<guid[^>]*>(https?:\/\/[^<]+)<\/guid>/)?.[1] || '';
+      const source  = raw(block.match(/<source[^>]*>(.*?)<\/source>/)?.[1]) || '';
+      const pubDate = block.match(/<pubDate>(.*?)<\/pubDate>/)?.[1] || '';
+      if (title) results.push({ title, link, source, pubDate, topic });
+    }
+    return results;
+  }
+
   const items = [];
   await Promise.allSettled(
     topics.map(async topic => {
       try {
-        const res = await fetch(
-          `https://news.google.com/rss/search?q=${encodeURIComponent(topic)}&hl=en-US&gl=US&ceid=US:en`,
-          { headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36' }, cf: { cacheTtl: 0, cacheEverything: false } }
-        );
-        if (!res.ok) return;
-        const text = await res.text();
-        const matches = [...text.matchAll(/<item>([\s\S]*?)<\/item>/g)];
-        for (const [, block] of matches.slice(0, 3)) {
-          const raw = t => t?.replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&#39;/g,"'").replace(/&quot;/g,'"') || '';
-          const title   = raw(block.match(/<title>(?:<!\[CDATA\[)?(.*?)(?:\]\]>)?<\/title>/)?.[1]);
-          const link    = block.match(/<link>(.*?)<\/link>/)?.[1] || block.match(/<guid[^>]*>(https?:\/\/[^<]+)<\/guid>/)?.[1] || '';
-          const source  = raw(block.match(/<source[^>]*>(.*?)<\/source>/)?.[1]);
-          const pubDate = block.match(/<pubDate>(.*?)<\/pubDate>/)?.[1] || '';
-          if (title) items.push({ title, link, source, pubDate, topic });
-        }
+        // Try Bing first; fall back to Google if Bing returns nothing
+        let results = await fetchFromBing(topic);
+        if (!results.length) results = await fetchFromGoogle(topic);
+        items.push(...results);
       } catch { /* skip */ }
     })
   );
