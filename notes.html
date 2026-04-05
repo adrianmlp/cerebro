@@ -25,57 +25,63 @@
 
 <main class="page-content">
 
-  <!-- Grid view -->
-  <div id="grid-view">
-    <div class="page-header">
-      <div class="page-title"><div class="page-title-icon">📝</div>Notes</div>
-      <div style="margin-left:auto;display:flex;gap:8px;align-items:center">
-        <button class="btn btn-primary" id="new-note-btn">+ New Note</button>
-      </div>
+  <div class="page-header">
+    <div class="page-title">
+      <div class="page-title-icon">📝</div>
+      Notes
     </div>
-
-    <div class="search-wrap" style="margin-bottom:12px">
-      <span class="search-icon">⌕</span>
-      <input class="input" id="search-input" placeholder="Search notes…" />
-    </div>
-
-    <!-- Tag filter pills (shown only when tags exist) -->
-    <div id="tag-filter-row" style="margin-bottom:16px;display:none">
-      <div class="filter-pills" id="tag-filter-pills"></div>
-    </div>
-
-    <div class="notes-grid" id="notes-grid">
-      <div class="empty-state" style="grid-column:1/-1"><div class="spinner"></div></div>
+    <div style="margin-left:auto;display:flex;gap:8px;align-items:center">
+      <span class="notes-count" id="notes-count" style="font-size:13px;color:var(--text-3)"></span>
+      <button class="btn btn-primary" id="new-note-btn">+ New Note</button>
     </div>
   </div>
 
-  <!-- Editor view -->
-  <div id="editor-view" style="display:none">
-    <div class="page-header">
-      <button class="btn btn-ghost btn-sm" id="back-btn">← Back</button>
-      <div style="margin-left:auto;display:flex;align-items:center;gap:8px">
-        <span class="note-save-indicator" id="save-indicator"></span>
-        <button class="btn btn-primary btn-sm" id="save-note-btn">Save</button>
+  <div class="notes-split" id="notes-split">
+
+    <!-- Left: note list card -->
+    <div class="card notes-sidebar">
+      <div class="notes-sidebar-search card-body" style="padding:12px 16px;border-bottom:1px solid var(--border)">
+        <div class="search-wrap" style="margin:0">
+          <span class="search-icon">⌕</span>
+          <input class="input" id="search-input" placeholder="Search notes…" />
+        </div>
       </div>
-      <button class="btn-icon danger" id="delete-note-btn" title="Delete note" style="margin-left:4px">🗑</button>
+      <div id="tag-filter-row" style="display:none;padding:8px 12px;border-bottom:1px solid var(--border)">
+        <div class="filter-pills" id="tag-filter-pills"></div>
+      </div>
+      <div class="notes-list" id="notes-list">
+        <div style="padding:24px;text-align:center"><div class="spinner"></div></div>
+      </div>
     </div>
 
-    <input class="note-editor-title" id="note-title" placeholder="Note title…" />
+    <!-- Right: editor card -->
+    <div class="card notes-panel" id="notes-panel">
+      <div class="notes-panel-empty" id="notes-panel-empty">
+        <div class="empty-icon">📝</div>
+        <div class="empty-text">Select a note or create a new one</div>
+      </div>
 
-    <!-- Formatting toolbar -->
-    <div class="note-toolbar">
-      <button class="note-toolbar-btn" id="fmt-bold" title="Bold (wraps selection in **)"><strong>B</strong></button>
-      <div class="note-toolbar-divider"></div>
-      <button class="note-toolbar-btn" id="fmt-bullet" title="Bullet list (prefixes lines with •)">• List</button>
+      <div class="notes-editor" id="notes-editor" style="display:none">
+        <div class="notes-editor-header card-body" style="padding:10px 20px;border-bottom:1px solid var(--border)">
+          <button class="btn btn-ghost btn-sm notes-mobile-back" id="back-btn">← Back</button>
+          <span class="note-save-indicator" id="save-indicator"></span>
+          <button class="btn btn-ghost btn-sm" id="save-note-btn">Save</button>
+          <button class="btn-icon danger" id="delete-note-btn" title="Delete note">🗑</button>
+        </div>
+        <input class="note-editor-title" id="note-title" placeholder="Note title…" />
+        <div class="note-toolbar">
+          <button class="note-toolbar-btn" id="fmt-bold" title="Bold"><strong>B</strong></button>
+          <div class="note-toolbar-divider"></div>
+          <button class="note-toolbar-btn" id="fmt-bullet" title="Bullet list">• List</button>
+        </div>
+        <textarea class="note-editor-content" id="note-content" placeholder="Start writing…"></textarea>
+        <div class="note-tags-section">
+          <div class="note-tags-chips" id="note-tags-chips"></div>
+          <input class="note-tag-input" id="note-tag-input" placeholder="Add tag… (press Enter or comma)" />
+        </div>
+      </div>
     </div>
 
-    <textarea class="note-editor-content" id="note-content" placeholder="Start writing…"></textarea>
-
-    <!-- Tags section -->
-    <div class="note-tags-section">
-      <div class="note-tags-chips" id="note-tags-chips"></div>
-      <input class="note-tag-input" id="note-tag-input" placeholder="Add tag… (press Enter or comma)" />
-    </div>
   </div>
 
 </main>

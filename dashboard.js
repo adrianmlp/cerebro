@@ -334,27 +334,32 @@ async function loadBrief() {
     const stockSec = data.stocks?.length
       ? `<div class="brief-stocks">${data.stocks.map(s => {
           const up = (s.changePercent || 0) >= 0;
-          return `<div class="brief-stock">
+          return `<a class="brief-stock" href="https://finance.yahoo.com/quote/${s.symbol}" target="_blank" rel="noopener">
             <span class="brief-stock-symbol">${s.symbol}</span>
             <span class="brief-stock-price">$${(s.price||0).toFixed(2)}</span>
             <span class="brief-stock-change ${up?'up':'down'}">${briefFmtChange(s.changePercent)}</span>
-          </div>`;
+            ${!s.marketOpen ? `<span class="brief-stock-closed">Closed</span>` : ''}
+          </a>`;
         }).join('')}</div>`
-      : `<div class="brief-empty">No tickers configured — click ⚙ Settings to add some</div>`;
+      : data.settings?.tickers
+        ? `<div class="brief-empty">Could not load stock data — markets may be unavailable</div>`
+        : `<div class="brief-empty">No tickers configured — click ⚙ Settings to add some</div>`;
 
     // Sports
     const sportSec = data.sports?.length
       ? `<div class="brief-sports">${data.sports.map(g => {
           const hasScore = g.homeScore !== '' && g.awayScore !== '';
-          return `<div class="brief-score">
+          const inner = `
             <div class="brief-score-teams">
               <span>${g.away}</span>
               ${hasScore ? `<span class="brief-score-nums">${g.awayScore}–${g.homeScore}</span>` : '<span class="brief-score-vs">@</span>'}
               <span>${g.home}</span>
             </div>
             <div class="brief-score-status">${g.status || (hasScore ? '' : briefFmtTime(g.date))}</div>
-            <span class="brief-score-badge">${g.league.toUpperCase()}</span>
-          </div>`;
+            <span class="brief-score-badge">${g.league.toUpperCase()}</span>`;
+          return g.link
+            ? `<a class="brief-score" href="${g.link}" target="_blank" rel="noopener">${inner}</a>`
+            : `<div class="brief-score">${inner}</div>`;
         }).join('')}</div>`
       : `<div class="brief-empty">No teams configured — click ⚙ Settings to add some</div>`;
 
@@ -371,7 +376,9 @@ async function loadBrief() {
               </div>
             </div>
           </div>`).join('')}</div>`
-      : `<div class="brief-empty">No news topics configured — click ⚙ Settings to add some</div>`;
+      : data.settings?.topics
+        ? `<div class="brief-empty">Could not load news — try refreshing</div>`
+        : `<div class="brief-empty">No news topics configured — click ⚙ Settings to add some</div>`;
 
     body.innerHTML = `<div class="brief-grid">
       <div class="brief-top-row">

@@ -682,21 +682,30 @@ async function briefFetchStocks(tickerStr) {
   if (!tickerStr.trim()) return [];
   const symbols = tickerStr.split(',').map(s => s.trim().toUpperCase()).filter(Boolean).slice(0, 12);
   if (!symbols.length) return [];
-  try {
-    const res = await fetch(
-      `https://query1.finance.yahoo.com/v7/finance/quote?symbols=${symbols.join(',')}&fields=regularMarketPrice,regularMarketChange,regularMarketChangePercent,shortName`,
-      { headers: { 'User-Agent': 'Mozilla/5.0', 'Accept': 'application/json' }, cf: { cacheTtl: 300 } }
-    );
-    if (!res.ok) return [];
-    const data = await res.json();
-    return (data.quoteResponse?.result || []).map(q => ({
-      symbol:        q.symbol,
-      name:          q.shortName || q.symbol,
-      price:         q.regularMarketPrice,
-      change:        q.regularMarketChange,
-      changePercent: q.regularMarketChangePercent,
-    }));
-  } catch { return []; }
+  const headers = { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36', 'Accept': 'application/json' };
+  const results = await Promise.allSettled(
+    symbols.map(sym =>
+      fetch(`https://query1.finance.yahoo.com/v8/finance/chart/${sym}?interval=1d&range=2d`, { headers, cf: { cacheTtl: 300 } })
+        .then(r => r.ok ? r.json() : null)
+        .then(data => {
+          const meta = data?.chart?.result?.[0]?.meta;
+          if (!meta) return null;
+          const price = meta.regularMarketPrice || meta.previousClose || 0;
+          const prevClose = meta.chartPreviousClose || meta.previousClose || price;
+          const change = price - prevClose;
+          const changePercent = prevClose ? (change / prevClose) * 100 : 0;
+          return {
+            symbol:        sym,
+            name:          meta.longName || meta.shortName || sym,
+            price,
+            change,
+            changePercent,
+            marketOpen:    meta.marketState === 'REGULAR',
+          };
+        })
+    )
+  );
+  return results.map(r => r.status === 'fulfilled' ? r.value : null).filter(Boolean);
 }
 
 async function briefFetchSports(teamStr) {
@@ -715,6 +724,8 @@ async function briefFetchSports(teamStr) {
     ['basketball', 'mens-college-basketball'],
   ];
 
+  const ESPN_PATH = { 'nfl':'nfl','nba':'nba','mlb':'mlb','nhl':'nhl','usa.1':'soccer','wnba':'wnba','college-football':'college-football','mens-college-basketball':'mens-college-basketball' };
+
   const settled = await Promise.allSettled(
     leagues.map(([sport, league]) =>
       fetch(`https://site.api.espn.com/apis/site/v2/sports/${sport}/${league}/scoreboard`,
@@ -724,6 +735,7 @@ async function briefFetchSports(teamStr) {
         const comp = ev.competitions?.[0];
         const home = comp?.competitors?.find(c => c.homeAway === 'home');
         const away = comp?.competitors?.find(c => c.homeAway === 'away');
+        const sportPath = ESPN_PATH[league] || league;
         return {
           league,
           home:      home?.team?.displayName || '',
@@ -732,6 +744,7 @@ async function briefFetchSports(teamStr) {
           awayScore: away?.score ?? '',
           status:    comp?.status?.type?.description || '',
           date:      ev.date || '',
+          link:      `https://www.espn.com/${sportPath}/game/_/gameId/${ev.id}`,
         };
       }))
     )
@@ -742,7 +755,12 @@ async function briefFetchSports(teamStr) {
   return allGames.filter(g => {
     const hn = g.home.toLowerCase();
     const an = g.away.toLowerCase();
-    return teams.some(t => hn.includes(t) || an.includes(t) || hn.split(' ').some(w => t.includes(w) && w.length > 3) || an.split(' ').some(w => t.includes(w) && w.length > 3));
+    return teams.some(t => {
+      if (hn.includes(t) || an.includes(t)) return true;
+      // All significant words in the user's term must appear in the team name
+      const tWords = t.split(' ').filter(w => w.length > 3);
+      return tWords.length > 0 && (tWords.every(w => hn.includes(w)) || tWords.every(w => an.includes(w)));
+    });
   });
 }
 
@@ -751,25 +769,52 @@ async function briefFetchNews(topicStr) {
   const topics = topicStr.split(',').map(s => s.trim()).filter(Boolean).slice(0, 4);
   if (!topics.length) return [];
 
+  const raw = t => t?.replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&#39;/g,"'").replace(/&quot;/g,'"').replace(/<[^>]+>/g,'') || '';
+
+  async function fetchFromBing(topic) {
+    const res = await fetch(
+      `https://www.bing.com/news/search?q=${encodeURIComponent(topic)}&format=RSS&mkt=en-US&count=5`,
+      { headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36', 'Accept-Language': 'en-US,en;q=0.9' } }
+    );
+    if (!res.ok) return [];
+    const text = await res.text();
+    const results = [];
+    for (const [, block] of [...text.matchAll(/<item>([\s\S]*?)<\/item>/g)].slice(0, 3)) {
+      const title   = raw(block.match(/<title>(?:<!\[CDATA\[)?(.*?)(?:\]\]>)?<\/title>/)?.[1]);
+      const link    = block.match(/<link\s*\/?>(.*?)<\/link>/)?.[1]?.trim() || block.match(/<guid[^>]*>(https?:\/\/[^<]+)<\/guid>/)?.[1] || '';
+      const source  = raw(block.match(/<source[^>]*>(.*?)<\/source>/)?.[1]) || raw(block.match(/<provider[^>]*>(.*?)<\/provider>/)?.[1]) || '';
+      const pubDate = block.match(/<pubDate>(.*?)<\/pubDate>/)?.[1] || '';
+      if (title) results.push({ title, link, source, pubDate, topic });
+    }
+    return results;
+  }
+
+  async function fetchFromGoogle(topic) {
+    const res = await fetch(
+      `https://news.google.com/rss/search?q=${encodeURIComponent(topic)}&hl=en-US&gl=US&ceid=US:en`,
+      { headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36' } }
+    );
+    if (!res.ok) return [];
+    const text = await res.text();
+    const results = [];
+    for (const [, block] of [...text.matchAll(/<item>([\s\S]*?)<\/item>/g)].slice(0, 3)) {
+      const title   = raw(block.match(/<title>(?:<!\[CDATA\[)?(.*?)(?:\]\]>)?<\/title>/)?.[1]);
+      const link    = block.match(/<link>(.*?)<\/link>/)?.[1] || block.match(/<guid[^>]*>(https?:\/\/[^<]+)<\/guid>/)?.[1] || '';
+      const source  = raw(block.match(/<source[^>]*>(.*?)<\/source>/)?.[1]) || '';
+      const pubDate = block.match(/<pubDate>(.*?)<\/pubDate>/)?.[1] || '';
+      if (title) results.push({ title, link, source, pubDate, topic });
+    }
+    return results;
+  }
+
   const items = [];
   await Promise.allSettled(
     topics.map(async topic => {
       try {
-        const res = await fetch(
-          `https://news.google.com/rss/search?q=${encodeURIComponent(topic)}&hl=en-US&gl=US&ceid=US:en`,
-          { headers: { 'User-Agent': 'Mozilla/5.0' }, cf: { cacheTtl: 600 } }
-        );
-        if (!res.ok) return;
-        const text = await res.text();
-        const matches = [...text.matchAll(/<item>([\s\S]*?)<\/item>/g)];
-        for (const [, block] of matches.slice(0, 3)) {
-          const raw = t => t?.replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&#39;/g,"'").replace(/&quot;/g,'"') || '';
-          const title   = raw(block.match(/<title>(?:<!\[CDATA\[)?(.*?)(?:\]\]>)?<\/title>/)?.[1]);
-          const link    = block.match(/<link>(.*?)<\/link>/)?.[1] || block.match(/<guid[^>]*>(https?:\/\/[^<]+)<\/guid>/)?.[1] || '';
-          const source  = raw(block.match(/<source[^>]*>(.*?)<\/source>/)?.[1]);
-          const pubDate = block.match(/<pubDate>(.*?)<\/pubDate>/)?.[1] || '';
-          if (title) items.push({ title, link, source, pubDate, topic });
-        }
+        // Try Bing first; fall back to Google if Bing returns nothing
+        let results = await fetchFromBing(topic);
+        if (!results.length) results = await fetchFromGoogle(topic);
+        items.push(...results);
       } catch { /* skip */ }
     })
   );
@@ -1381,7 +1426,7 @@ Reply in 1-3 sentences. For create task/event return JSON: {"message":"...","act
           briefFetchNews(topicRow?.value    || ''),
         ]);
 
-        return json({ dueToday: dueTasks, meetings, stocks, sports, news });
+        return json({ dueToday: dueTasks, meetings, stocks, sports, news, settings: { tickers: tickerRow?.value||'', teams: teamRow?.value||'', topics: topicRow?.value||'' } });
       }
 
       return json({ error: 'Not found' }, 404);

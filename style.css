@@ -800,91 +800,146 @@ body {
 }
 
 /* ─────────────────────────────
-   NOTES
+   NOTES — split panel layout
 ───────────────────────────── */
-.notes-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-  gap: 16px;
+.notes-split {
+  display: flex;
+  gap: 20px;
+  /* page-content: 32px top + ~56px header+margin + 48px bottom = ~136px */
+  height: calc(100vh - var(--nav-h) - 148px);
+  min-height: 480px;
 }
 
-.note-card {
-  background: linear-gradient(135deg, var(--card-from), var(--card-to));
-  border: 1px solid var(--border);
-  border-radius: var(--r-card);
-  padding: 16px;
+/* Sidebar card */
+.notes-sidebar {
+  width: 280px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 0;
+}
+
+.notes-list {
+  flex: 1;
+  overflow-y: auto;
+}
+
+/* Sidebar list items */
+.notes-list-item {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
   cursor: pointer;
-  transition: border-color 0.2s, transform 0.15s;
-  position: relative;
+  transition: background 0.15s;
+  border-left: 3px solid transparent;
 }
 
-.note-card:hover {
-  border-color: var(--border-hover);
-  transform: translateY(-2px);
+.notes-list-item:hover { background: rgba(255,255,255,0.04); }
+
+.notes-list-item.active {
+  background: rgba(99,102,241,0.1);
+  border-left-color: var(--indigo);
 }
 
-.note-card-title {
+.notes-list-title {
   font-family: var(--font-head);
-  font-size: 14px;
-  font-weight: 700;
+  font-weight: 600;
+  font-size: 13px;
   color: var(--text);
-  margin-bottom: 8px;
+  margin-bottom: 4px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-.note-card-preview {
+.notes-list-preview {
   font-size: 12px;
   color: var(--text-3);
-  line-height: 1.5;
+  line-height: 1.4;
   display: -webkit-box;
-  -webkit-line-clamp: 3;
+  -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
+  margin-bottom: 6px;
 }
 
-.note-card-footer {
+.notes-list-footer {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-top: 12px;
 }
 
-.note-timestamp {
+.notes-list-time {
   font-size: 10px;
   font-family: var(--font-mono);
   color: var(--text-3);
 }
 
-.note-card .btn-icon {
+.notes-list-item .btn-icon {
   opacity: 0;
   transition: opacity 0.15s;
+  font-size: 12px;
 }
 
-.note-card:hover .btn-icon { opacity: 1; }
+.notes-list-item:hover .btn-icon { opacity: 1; }
 
-/* Note editor */
-.note-editor {
-  display: none;
+/* Editor panel card */
+.notes-panel {
+  flex: 1;
+  display: flex;
   flex-direction: column;
-  height: calc(100vh - var(--nav-h) - 80px);
+  overflow: hidden;
+  min-width: 0;
+  padding: 0;
 }
 
-.note-editor.open { display: flex; }
+.notes-panel-empty {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-3);
+}
+
+.notes-editor {
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+.notes-editor-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.notes-mobile-back { display: none; }
+
+.note-save-indicator {
+  font-size: 11px;
+  color: var(--text-3);
+  font-family: var(--font-mono);
+  transition: color 0.3s;
+  margin-right: auto;
+}
+
+.note-save-indicator.saved { color: var(--green); }
 
 .note-editor-title {
   font-family: var(--font-head);
-  font-size: 22px;
+  font-size: 20px;
   font-weight: 800;
   background: none;
   border: none;
   color: var(--text);
   outline: none;
-  padding: 0 0 12px;
+  padding: 16px 20px 12px;
   border-bottom: 1px solid var(--border);
-  margin-bottom: 16px;
   width: 100%;
+  flex-shrink: 0;
+  box-sizing: border-box;
 }
 
 .note-editor-content {
@@ -898,25 +953,20 @@ body {
   resize: none;
   outline: none;
   width: 100%;
+  padding: 14px 20px;
+  box-sizing: border-box;
+  overflow-y: auto;
+  min-height: 0;
 }
 
-.note-save-indicator {
-  font-size: 11px;
-  color: var(--text-3);
-  font-family: var(--font-mono);
-  transition: color 0.3s;
-}
-
-.note-save-indicator.saved { color: var(--green); }
-
-/* Note formatting toolbar */
+/* Formatting toolbar */
 .note-toolbar {
   display: flex;
   align-items: center;
   gap: 2px;
-  padding: 6px 0;
-  margin-bottom: 12px;
+  padding: 6px 16px;
   border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
 }
 
 .note-toolbar-btn {
@@ -946,15 +996,15 @@ body {
   margin: 0 4px;
 }
 
-/* Tags section in editor */
+/* Tags section */
 .note-tags-section {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
   gap: 6px;
-  padding: 10px 0 4px;
+  padding: 10px 20px;
   border-top: 1px solid var(--border);
-  margin-top: 12px;
+  flex-shrink: 0;
 }
 
 .note-tags-chips {
@@ -976,14 +1026,10 @@ body {
   transition: border-color 0.2s, color 0.2s;
 }
 
-.note-tag-input:focus {
-  border-color: var(--indigo);
-  color: var(--text);
-}
-
+.note-tag-input:focus { border-color: var(--indigo); color: var(--text); }
 .note-tag-input::placeholder { color: var(--text-3); }
 
-/* Tag chips — shared between editor and note cards */
+/* Tag chips */
 .tag-chip {
   display: inline-flex;
   align-items: center;
@@ -999,9 +1045,7 @@ body {
   text-transform: lowercase;
 }
 
-.tag-chip.editable {
-  padding-right: 4px;
-}
+.tag-chip.editable { padding-right: 4px; }
 
 .tag-chip-remove {
   background: none;
@@ -1015,14 +1059,6 @@ body {
 }
 
 .tag-chip-remove:hover { color: var(--red); }
-
-/* Tag chips on note cards */
-.note-card-tags {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-  margin: 8px 0 4px;
-}
 
 /* ─────────────────────────────
    AI CHAT
@@ -1444,6 +1480,8 @@ body {
   margin-bottom: 20px;
 }
 
+#brief-card { margin-bottom: 20px; }
+
 /* Scrollable list areas inside dashboard cards */
 #schedule-list {
   overflow-y: auto;
@@ -1627,7 +1665,12 @@ body {
 
   .form-row { grid-template-columns: 1fr; }
 
-  .notes-grid { grid-template-columns: 1fr; }
+  /* Notes mobile: sidebar full width, editor overlays when open */
+  .notes-split { height: auto; min-height: 0; flex-direction: column; gap: 0; }
+  .notes-sidebar { width: 100%; height: calc(100vh - var(--nav-h) - var(--mobile-nav-h) - 100px); }
+  .notes-panel { display: none; position: fixed; inset: var(--nav-h) 0 var(--mobile-nav-h) 0; z-index: 50; background: var(--bg); }
+  .notes-split.note-open .notes-panel { display: flex; }
+  .notes-mobile-back { display: inline-flex !important; }
 
   .modal { max-height: 95vh; }
 
@@ -1748,8 +1791,11 @@ body {
   border: 1px solid var(--border);
   border-radius: var(--r-btn);
   transition: border-color 0.15s;
+  text-decoration: none;
+  cursor: pointer;
 }
 .brief-stock:hover { border-color: var(--border-hover); }
+.brief-stock-closed { font-size: 10px; color: var(--text-3); opacity: 0.7; margin-left: 2px; }
 .brief-stock-symbol { font-weight: 700; font-size: 13px; color: var(--text); font-family: var(--font-mono); }
 .brief-stock-price  { font-size: 13px; color: var(--text-2); }
 .brief-stock-change { font-size: 12px; font-weight: 600; }
@@ -1772,6 +1818,8 @@ body {
   border-radius: var(--r-btn);
   font-size: 13px;
   transition: border-color 0.15s;
+  text-decoration: none;
+  cursor: pointer;
 }
 .brief-score:hover { border-color: var(--border-hover); }
 .brief-score-teams { display: flex; align-items: center; gap: 6px; font-weight: 600; color: var(--text); }
