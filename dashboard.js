@@ -376,7 +376,9 @@ async function loadBrief() {
               </div>
             </div>
           </div>`).join('')}</div>`
-      : `<div class="brief-empty">No news topics configured — click ⚙ Settings to add some</div>`;
+      : data.settings?.topics
+        ? `<div class="brief-empty">Could not load news — try refreshing</div>`
+        : `<div class="brief-empty">No news topics configured — click ⚙ Settings to add some</div>`;
 
     body.innerHTML = `<div class="brief-grid">
       <div class="brief-top-row">

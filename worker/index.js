@@ -719,7 +719,7 @@ async function briefFetchNews(topicStr) {
       try {
         const res = await fetch(
           `https://news.google.com/rss/search?q=${encodeURIComponent(topic)}&hl=en-US&gl=US&ceid=US:en`,
-          { headers: { 'User-Agent': 'Mozilla/5.0' }, cf: { cacheTtl: 600 } }
+          { headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36' }, cf: { cacheTtl: 0, cacheEverything: false } }
         );
         if (!res.ok) return;
         const text = await res.text();
