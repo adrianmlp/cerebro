@@ -15,14 +15,11 @@ function parseTags(str) {
   return str.split(',').map(t => t.trim()).filter(Boolean);
 }
 
-function formatRelative(ts) {
+function formatTimestamp(ts) {
   if (!ts) return '';
   const d = new Date(ts + (ts.includes('Z') || ts.includes('+') ? '' : 'Z'));
-  const diff = Date.now() - d.getTime();
-  if (diff < 60000)    return 'Just now';
-  if (diff < 3600000)  return `${Math.floor(diff / 60000)}m ago`;
-  if (diff < 86400000) return `${Math.floor(diff / 3600000)}h ago`;
-  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) +
+    ', ' + d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
 }
 
 // ── Load notes ──
@@ -32,7 +29,7 @@ async function loadNotes() {
     const { notes } = await apiFetch(`/api/notes${qs}`);
     allNotes = notes;
     renderTagFilters();
-    renderGrid();
+    renderList();
   } catch (e) { toast(e.message, 'error'); }
 }
 
@@ -47,10 +44,7 @@ function renderTagFilters() {
   const row   = document.getElementById('tag-filter-row');
   const pills = document.getElementById('tag-filter-pills');
 
-  if (!allTags.length) {
-    row.style.display = 'none';
-    return;
-  }
+  if (!allTags.length) { row.style.display = 'none'; return; }
 
   row.style.display = 'block';
   pills.innerHTML = [
@@ -62,37 +56,33 @@ function renderTagFilters() {
     btn.addEventListener('click', () => {
       filterTag = btn.dataset.tag;
       renderTagFilters();
-      renderGrid();
+      renderList();
     });
   });
 }
 
-// ── Render grid ──
-function renderGrid() {
-  const grid  = document.getElementById('notes-grid');
+// ── Render sidebar list ──
+function renderList() {
+  const list  = document.getElementById('notes-list');
   const notes = getFilteredNotes();
 
+  document.getElementById('notes-count').textContent = `${notes.length} note${notes.length !== 1 ? 's' : ''}`;
+
   if (!notes.length) {
-    grid.innerHTML = `<div class="empty-state" style="grid-column:1/-1">
+    list.innerHTML = `<div class="empty-state" style="padding:32px 16px">
       <div class="empty-icon">📝</div>
-      <div class="empty-text">${searchQuery || filterTag ? 'No notes match your filter' : 'No notes yet'}</div>
-      <div class="empty-sub">${searchQuery || filterTag ? '' : 'Click "New Note" to get started'}</div>
+      <div class="empty-text">${searchQuery || filterTag ? 'No notes match' : 'No notes yet'}</div>
     </div>`;
     return;
   }
 
-  grid.innerHTML = notes.map(n => {
-    const tags    = parseTags(n.tags);
-    const tagHtml = tags.length
-      ? `<div class="note-card-tags">${tags.map(t => `<span class="tag-chip">${t}</span>`).join('')}</div>`
-      : '';
-    return `
-    <div class="note-card" onclick="openNote('${n.id}')">
-      <div class="note-card-title">${n.title || 'Untitled'}</div>
-      <div class="note-card-preview">${n.content || ''}</div>
-      ${tagHtml}
-      <div class="note-card-footer">
-        <span class="note-timestamp">${formatRelative(n.updated_at)}</span>
+  list.innerHTML = notes.map(n => {
+    const active = n.id === currentNoteId ? ' active' : '';
+    return `<div class="notes-list-item${active}" onclick="openNote('${n.id}')">
+      <div class="notes-list-title">${n.title || 'Untitled'}</div>
+      <div class="notes-list-preview">${n.content || ''}</div>
+      <div class="notes-list-footer">
+        <span class="notes-list-time">${formatTimestamp(n.updated_at)}</span>
         <button class="btn-icon danger" onclick="event.stopPropagation();deleteNote('${n.id}')" title="Delete">🗑</button>
       </div>
     </div>`;
@@ -113,8 +103,11 @@ window.openNote = function(id) {
   ind.classList.remove('saved');
 
   renderCurrentTags();
-  document.getElementById('grid-view').style.display   = 'none';
-  document.getElementById('editor-view').style.display = 'block';
+  document.getElementById('notes-panel-empty').style.display = 'none';
+  document.getElementById('notes-editor').style.display      = 'flex';
+  document.getElementById('notes-split').classList.add('note-open');
+
+  renderList(); // re-render to update active highlight
   document.getElementById('note-content').focus();
 };
 
@@ -131,7 +124,6 @@ window.removeTag = function(i) {
   renderCurrentTags();
 };
 
-// Add tag on Enter or comma
 document.getElementById('note-tag-input').addEventListener('keydown', e => {
   if (e.key === 'Enter' || e.key === ',') {
     e.preventDefault();
@@ -156,12 +148,9 @@ document.getElementById('new-note-btn').addEventListener('click', async () => {
   } catch (e) { toast(e.message, 'error'); }
 });
 
-// ── Back ──
+// ── Mobile back ──
 document.getElementById('back-btn').addEventListener('click', () => {
-  currentNoteId = null;
-  document.getElementById('editor-view').style.display = 'none';
-  document.getElementById('grid-view').style.display   = 'block';
-  loadNotes();
+  document.getElementById('notes-split').classList.remove('note-open');
 });
 
 // ── Save ──
@@ -181,6 +170,7 @@ async function saveNote() {
     ind.textContent = 'Saved ✓';
     ind.classList.add('saved');
     setTimeout(() => { ind.textContent = ''; ind.classList.remove('saved'); }, 2000);
+    renderList();
   } catch (e) {
     ind.textContent = 'Save failed';
     ind.classList.remove('saved');
@@ -189,7 +179,6 @@ async function saveNote() {
 
 document.getElementById('save-note-btn').addEventListener('click', saveNote);
 
-// Ctrl/Cmd + S shortcut
 ['note-title', 'note-content'].forEach(id => {
   document.getElementById(id).addEventListener('keydown', e => {
     if ((e.metaKey || e.ctrlKey) && e.key === 's') { e.preventDefault(); saveNote(); }
@@ -198,7 +187,7 @@ document.getElementById('save-note-btn').addEventListener('click', saveNote);
 
 // ── Formatting toolbar ──
 document.getElementById('fmt-bold').addEventListener('click', () => {
-  const ta  = document.getElementById('note-content');
+  const ta = document.getElementById('note-content');
   const { selectionStart: s, selectionEnd: e, value } = ta;
   const selected = value.slice(s, e);
   if (!selected) return;
@@ -207,20 +196,13 @@ document.getElementById('fmt-bold').addEventListener('click', () => {
 });
 
 document.getElementById('fmt-bullet').addEventListener('click', () => {
-  const ta  = document.getElementById('note-content');
+  const ta = document.getElementById('note-content');
   const { selectionStart: s, selectionEnd: e, value } = ta;
-
-  // Expand selection to cover full lines
-  const lineStart = value.lastIndexOf('\n', s - 1) + 1;
+  const lineStart  = value.lastIndexOf('\n', s - 1) + 1;
   const lineEndIdx = value.indexOf('\n', e);
-  const blockEnd  = lineEndIdx === -1 ? value.length : lineEndIdx;
-  const block     = value.slice(lineStart, blockEnd);
-
-  const bulleted = block.split('\n').map(line => {
-    if (line.startsWith('• ')) return line;  // already bulleted
-    return line ? `• ${line}` : line;
-  }).join('\n');
-
+  const blockEnd   = lineEndIdx === -1 ? value.length : lineEndIdx;
+  const block      = value.slice(lineStart, blockEnd);
+  const bulleted   = block.split('\n').map(line => (line && !line.startsWith('• ') ? `• ${line}` : line)).join('\n');
   ta.setRangeText(bulleted, lineStart, blockEnd, 'preserve');
   ta.focus();
 });
@@ -233,10 +215,11 @@ window.deleteNote = async function(id) {
     allNotes = allNotes.filter(n => n.id !== id);
     if (currentNoteId === id) {
       currentNoteId = null;
-      document.getElementById('editor-view').style.display = 'none';
-      document.getElementById('grid-view').style.display   = 'block';
+      document.getElementById('notes-editor').style.display      = 'none';
+      document.getElementById('notes-panel-empty').style.display = 'flex';
+      document.getElementById('notes-split').classList.remove('note-open');
     }
-    renderGrid();
+    renderList();
     toast('Note deleted', 'success');
   } catch (e) { toast(e.message, 'error'); }
 };
