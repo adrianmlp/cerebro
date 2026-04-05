@@ -21,25 +21,30 @@
   <button id="mobile-menu-btn">☰</button>
 </nav>
 
-<main class="page-content notes-page-layout">
+<main class="page-content">
+
+  <div class="page-header">
+    <div class="page-title">
+      <div class="page-title-icon">📝</div>
+      Notes
+    </div>
+    <div style="margin-left:auto;display:flex;gap:8px;align-items:center">
+      <span class="notes-count" id="notes-count" style="font-size:13px;color:var(--text-3)"></span>
+      <button class="btn btn-primary" id="new-note-btn">+ New Note</button>
+    </div>
+  </div>
+
   <div class="notes-split" id="notes-split">
 
-    <!-- Left sidebar -->
-    <div class="notes-sidebar">
-      <div class="notes-sidebar-header">
-        <div class="notes-sidebar-title">
-          <span>📝</span> Notes
-          <span class="notes-count" id="notes-count"></span>
-        </div>
-        <button class="btn btn-primary btn-sm" id="new-note-btn">+ New Note</button>
-      </div>
-      <div class="notes-sidebar-search">
-        <div class="search-wrap">
+    <!-- Left: note list card -->
+    <div class="card notes-sidebar">
+      <div class="notes-sidebar-search card-body" style="padding:12px 16px;border-bottom:1px solid var(--border)">
+        <div class="search-wrap" style="margin:0">
           <span class="search-icon">⌕</span>
           <input class="input" id="search-input" placeholder="Search notes…" />
         </div>
       </div>
-      <div id="tag-filter-row" style="display:none">
+      <div id="tag-filter-row" style="display:none;padding:8px 12px;border-bottom:1px solid var(--border)">
         <div class="filter-pills" id="tag-filter-pills"></div>
       </div>
       <div class="notes-list" id="notes-list">
@@ -47,15 +52,15 @@
       </div>
     </div>
 
-    <!-- Right editor panel -->
-    <div class="notes-panel" id="notes-panel">
+    <!-- Right: editor card -->
+    <div class="card notes-panel" id="notes-panel">
       <div class="notes-panel-empty" id="notes-panel-empty">
         <div class="empty-icon">📝</div>
         <div class="empty-text">Select a note or create a new one</div>
       </div>
 
       <div class="notes-editor" id="notes-editor" style="display:none">
-        <div class="notes-editor-header">
+        <div class="notes-editor-header card-body" style="padding:10px 20px;border-bottom:1px solid var(--border)">
           <button class="btn btn-ghost btn-sm notes-mobile-back" id="back-btn">← Back</button>
           <span class="note-save-indicator" id="save-indicator"></span>
           <button class="btn btn-ghost btn-sm" id="save-note-btn">Save</button>
@@ -76,6 +81,7 @@
     </div>
 
   </div>
+
 </main>
 
 <nav id="mobile-bottom-nav">
