@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Mockup A — Focus Mode</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#0F1117;
+  --surface:#1A1D2E;
+  --card-from:#1A1D2E;
+  --card-to:#141720;
+  --border:rgba(255,255,255,0.08);
+  --border-hover:rgba(255,255,255,0.15);
+  --indigo:#6366F1;
+  --violet:#A78BFA;
+  --text:#F1F5F9;
+  --text-2:#94A3B8;
+  --text-3:#64748B;
+  --green:#22C55E;
+  --red:#EF4444;
+  --amber:#F59E0B;
+  --font-body:'DM Sans',sans-serif;
+  --font-head:'Plus Jakarta Sans',sans-serif;
+  --font-mono:'JetBrains Mono',monospace;
+}
+body{font-family:var(--font-body);background:var(--bg);color:var(--text);min-height:100vh;font-size:15px;line-height:1.6;-webkit-font-smoothing:antialiased;}
+
+/* Nav */
+nav{height:60px;background:rgba(15,17,23,0.9);border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 28px;gap:16px;position:sticky;top:0;z-index:100;backdrop-filter:blur(12px);}
+.nav-logo{font-family:var(--font-head);font-weight:800;font-size:18px;color:var(--text);text-decoration:none;letter-spacing:-0.3px;}
+.nav-links{display:flex;gap:4px;margin-left:auto;}
+.nav-links a{color:var(--text-2);text-decoration:none;font-size:14px;font-weight:500;padding:6px 14px;border-radius:8px;transition:all 0.15s;}
+.nav-links a:hover{color:var(--text);background:rgba(255,255,255,0.06);}
+.nav-links a.active{color:var(--text);background:rgba(99,102,241,0.15);}
+
+/* Layout */
+.page{max-width:1100px;margin:0 auto;padding:28px 24px 140px;}
+
+/* Label */
+.mockup-label{display:inline-flex;align-items:center;gap:8px;background:rgba(99,102,241,0.15);border:1px solid rgba(99,102,241,0.3);color:var(--violet);font-size:12px;font-weight:700;padding:5px 14px;border-radius:20px;margin-bottom:20px;letter-spacing:0.5px;}
+
+/* Page header */
+.page-header{display:flex;align-items:center;gap:12px;margin-bottom:24px;}
+.page-title{font-family:var(--font-head);font-size:26px;font-weight:800;display:flex;align-items:center;gap:10px;}
+.page-title-icon{width:38px;height:38px;border-radius:10px;background:rgba(245,158,11,0.15);display:flex;align-items:center;justify-content:center;font-size:18px;}
+.page-subtitle{font-size:14px;color:var(--text-3);margin-left:auto;}
+
+/* Card */
+.card{background:linear-gradient(135deg,var(--card-from),var(--card-to));border:1px solid var(--border);border-radius:16px;overflow:hidden;margin-bottom:20px;}
+.card-header{display:flex;align-items:center;gap:12px;padding:18px 22px;border-bottom:1px solid var(--border);}
+.card-icon{width:34px;height:34px;border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0;}
+.card-icon.amber{background:rgba(245,158,11,0.15);color:var(--amber);}
+.card-title{font-family:var(--font-head);font-size:16px;font-weight:700;}
+.card-subtitle{font-size:13px;color:var(--text-3);margin-top:2px;}
+.card-actions{margin-left:auto;display:flex;gap:8px;}
+.card-body{padding:20px 22px;}
+
+/* Brief grid */
+.brief-grid{display:grid;grid-template-columns:1fr 1fr;gap:20px;}
+.brief-section-label{font-size:11px;font-weight:700;letter-spacing:0.8px;text-transform:uppercase;color:var(--text-3);margin-bottom:10px;}
+
+/* Brief items */
+.brief-empty{font-size:14px;color:var(--text-3);}
+.brief-meeting-item{display:flex;align-items:baseline;gap:10px;padding:7px 0;border-bottom:1px solid var(--border);}
+.brief-meeting-item:last-child{border:none;}
+.brief-meeting-time{font-size:12px;font-family:var(--font-mono);color:var(--indigo);flex-shrink:0;}
+.brief-meeting-title{font-size:14px;color:var(--text);}
+
+.brief-stocks{display:flex;flex-wrap:wrap;gap:8px;}
+.brief-stock{display:flex;align-items:center;gap:8px;padding:9px 14px;background:rgba(255,255,255,0.04);border:1px solid var(--border);border-radius:10px;text-decoration:none;cursor:pointer;}
+.brief-stock-symbol{font-weight:700;font-size:14px;font-family:var(--font-mono);color:var(--text);}
+.brief-stock-price{font-size:13px;color:var(--text-2);}
+.brief-stock-change{font-size:12px;font-weight:600;}
+.brief-stock-change.up{color:var(--green);}
+.brief-stock-change.down{color:var(--red);}
+.brief-stock-closed{font-size:10px;color:var(--text-3);}
+
+.brief-sports{display:flex;flex-wrap:wrap;gap:8px;}
+.brief-score{display:flex;align-items:center;gap:10px;padding:8px 14px;background:rgba(255,255,255,0.04);border:1px solid var(--border);border-radius:10px;font-size:13px;text-decoration:none;cursor:pointer;}
+.brief-score-teams{display:flex;align-items:center;gap:6px;font-weight:600;color:var(--text);}
+.brief-score-nums{font-family:var(--font-mono);font-size:13px;color:var(--violet);font-weight:700;}
+.brief-score-badge{font-size:10px;color:var(--text-3);}
+
+.brief-news-item{display:flex;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);}
+.brief-news-item:last-child{border:none;}
+.brief-news-bullet{color:var(--indigo);font-size:16px;flex-shrink:0;margin-top:1px;}
+.brief-news-title{font-size:14px;color:var(--text);text-decoration:none;line-height:1.4;}
+.brief-news-title:hover{color:var(--violet);}
+.brief-news-meta{margin-top:3px;display:flex;align-items:center;gap:6px;}
+.brief-news-topic{font-size:10px;font-weight:700;letter-spacing:0.4px;background:rgba(99,102,241,0.12);border:1px solid rgba(99,102,241,0.25);color:var(--violet);padding:2px 7px;border-radius:20px;text-transform:lowercase;}
+.brief-news-source{font-size:11px;color:var(--text-3);}
+
+/* Due today compact */
+.due-list{display:flex;flex-direction:column;gap:6px;}
+.due-item{display:flex;align-items:center;gap:10px;font-size:14px;}
+.due-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0;}
+.due-dot.URGENT{background:#EF4444;}
+.due-dot.HIGH{background:#F97316;}
+.due-dot.NORMAL{background:#6366F1;}
+.due-dot.BACKLOG{background:#6B7280;}
+
+/* Collapsed cards toggle */
+.collapsed-row{display:flex;gap:12px;margin-bottom:20px;}
+.collapsed-card{flex:1;background:linear-gradient(135deg,var(--card-from),var(--card-to));border:1px solid var(--border);border-radius:14px;padding:14px 18px;display:flex;align-items:center;gap:12px;cursor:pointer;transition:border-color 0.15s;}
+.collapsed-card:hover{border-color:var(--border-hover);}
+.collapsed-card-icon{width:30px;height:30px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:14px;}
+.collapsed-card-icon.indigo{background:rgba(99,102,241,0.15);color:var(--indigo);}
+.collapsed-card-icon.violet{background:rgba(167,139,250,0.15);color:var(--violet);}
+.collapsed-card-label{font-size:14px;font-weight:600;}
+.collapsed-card-meta{font-size:12px;color:var(--text-3);margin-top:1px;}
+.collapsed-expand{margin-left:auto;color:var(--text-3);font-size:12px;}
+
+/* Btn */
+.btn{border:none;border-radius:10px;cursor:pointer;font-family:var(--font-body);font-weight:600;transition:all 0.15s;}
+.btn-ghost{background:rgba(255,255,255,0.06);color:var(--text-2);font-size:13px;padding:7px 14px;}
+.btn-ghost:hover{background:rgba(255,255,255,0.1);color:var(--text);}
+.btn-primary{background:var(--indigo);color:#fff;font-size:13px;padding:7px 16px;}
+.btn-sm{font-size:12px;padding:5px 12px;}
+
+/* ── Floating Chat Bar ── */
+.chat-float{position:fixed;bottom:0;left:0;right:0;z-index:200;padding:0 24px 0;pointer-events:none;}
+.chat-float-inner{max-width:1100px;margin:0 auto;pointer-events:all;}
+.chat-bar{background:rgba(20,23,32,0.96);border:1px solid var(--border);border-bottom:none;border-radius:16px 16px 0 0;backdrop-filter:blur(20px);box-shadow:0 -8px 40px rgba(0,0,0,0.5);overflow:hidden;}
+.chat-bar-header{display:flex;align-items:center;gap:10px;padding:10px 18px;border-bottom:1px solid var(--border);cursor:pointer;}
+.chat-bar-avatar{width:26px;height:26px;border-radius:8px;background:rgba(99,102,241,0.2);display:flex;align-items:center;justify-content:center;color:var(--indigo);font-size:13px;}
+.chat-bar-title{font-size:14px;font-weight:600;}
+.chat-bar-hint{font-size:12px;color:var(--text-3);margin-left:4px;}
+.chat-bar-toggle{margin-left:auto;color:var(--text-3);font-size:12px;background:none;border:none;cursor:pointer;color:var(--text-2);}
+.chat-bar-input-row{display:flex;align-items:center;gap:10px;padding:10px 14px;}
+.chat-bar-input{flex:1;background:rgba(255,255,255,0.05);border:1px solid var(--border);border-radius:10px;color:var(--text);font-family:var(--font-body);font-size:14px;padding:9px 14px;outline:none;resize:none;}
+.chat-bar-input::placeholder{color:var(--text-3);}
+.chat-bar-send{background:var(--indigo);border:none;border-radius:9px;color:#fff;cursor:pointer;font-size:13px;font-weight:600;padding:9px 18px;font-family:var(--font-body);}
+.chat-messages-preview{padding:0 16px 8px;max-height:160px;overflow-y:auto;display:flex;flex-direction:column;gap:8px;}
+.chat-msg{display:flex;gap:8px;align-items:flex-start;}
+.chat-msg.assistant .chat-bubble{background:rgba(99,102,241,0.1);border:1px solid rgba(99,102,241,0.2);border-radius:0 10px 10px 10px;padding:8px 12px;font-size:13px;color:var(--text-2);}
+.chat-msg.user{flex-direction:row-reverse;}
+.chat-msg.user .chat-bubble{background:rgba(99,102,241,0.2);border:1px solid rgba(99,102,241,0.3);border-radius:10px 0 10px 10px;padding:8px 12px;font-size:13px;color:var(--text);}
+.chat-avatar{width:22px;height:22px;border-radius:6px;background:rgba(255,255,255,0.06);display:flex;align-items:center;justify-content:center;font-size:11px;flex-shrink:0;margin-top:1px;}
+</style>
+</head>
+<body>
+
+<nav>
+  <a class="nav-logo" href="#">Cerebro</a>
+  <div class="nav-links">
+    <a href="#" class="active">Dashboard</a>
+    <a href="#">Tasks</a>
+    <a href="#">Calendar</a>
+    <a href="#">Notes</a>
+  </div>
+</nav>
+
+<div class="page">
+  <div class="mockup-label">✦ Mockup A — Focus Mode</div>
+
+  <div class="page-header">
+    <div class="page-title">
+      <div class="page-title-icon">📋</div>
+      Daily Brief
+    </div>
+    <div class="page-subtitle">Sunday, April 6 · Updated 8:02 AM</div>
+    <div class="card-actions" style="margin-left:12px">
+      <button class="btn btn-ghost btn-sm">↺ Refresh</button>
+      <button class="btn btn-ghost btn-sm">⚙ Settings</button>
+    </div>
+  </div>
+
+  <!-- Tasks + Schedule collapsed into compact chips -->
+  <div class="collapsed-row">
+    <div class="collapsed-card">
+      <div class="collapsed-card-icon indigo">☑</div>
+      <div>
+        <div class="collapsed-card-label">Tasks</div>
+        <div class="collapsed-card-meta">3 open · 2 due today</div>
+      </div>
+      <div class="collapsed-expand">▾ expand</div>
+    </div>
+    <div class="collapsed-card">
+      <div class="collapsed-card-icon violet">📅</div>
+      <div>
+        <div class="collapsed-card-label">Today's Schedule</div>
+        <div class="collapsed-card-meta">4 events · Next at 10:00 AM</div>
+      </div>
+      <div class="collapsed-expand">▾ expand</div>
+    </div>
+  </div>
+
+  <!-- Daily Brief card (full width, prominent) -->
+  <div class="card">
+    <div class="card-header">
+      <div class="card-icon amber">📋</div>
+      <div>
+        <div class="card-title">Daily Brief</div>
+        <div class="card-subtitle">Your morning summary</div>
+      </div>
+    </div>
+    <div class="card-body">
+      <div class="brief-grid">
+
+        <div>
+          <div class="brief-section-label">📌 Due Today</div>
+          <div class="due-list">
+            <div class="due-item"><div class="due-dot URGENT"></div>Review Soundhound proposal deck</div>
+            <div class="due-item"><div class="due-dot HIGH"></div>Send SteerCo follow-up notes</div>
+            <div class="due-item"><div class="due-dot NORMAL"></div>Weekly team check-in prep</div>
+          </div>
+        </div>
+
+        <div>
+          <div class="brief-section-label">📅 Today's Meetings</div>
+          <div>
+            <div class="brief-meeting-item"><span class="brief-meeting-time">9:00 AM</span><span class="brief-meeting-title">Restaurant Tech Weekly</span></div>
+            <div class="brief-meeting-item"><span class="brief-meeting-time">11:00 AM</span><span class="brief-meeting-title">SteerCo — Catering Review</span></div>
+            <div class="brief-meeting-item"><span class="brief-meeting-time">2:30 PM</span><span class="brief-meeting-title">Soundhound Phase 1 Sync</span></div>
+          </div>
+        </div>
+
+        <div>
+          <div class="brief-section-label">📈 Stocks</div>
+          <div class="brief-stocks">
+            <a class="brief-stock"><span class="brief-stock-symbol">SPY</span><span class="brief-stock-price">$536.22</span><span class="brief-stock-change down">-1.2%</span><span class="brief-stock-closed">Closed</span></a>
+            <a class="brief-stock"><span class="brief-stock-symbol">GOOG</span><span class="brief-stock-price">$162.45</span><span class="brief-stock-change up">+0.8%</span><span class="brief-stock-closed">Closed</span></a>
+            <a class="brief-stock"><span class="brief-stock-symbol">TSLA</span><span class="brief-stock-price">$248.10</span><span class="brief-stock-change down">-2.4%</span><span class="brief-stock-closed">Closed</span></a>
+          </div>
+        </div>
+
+        <div>
+          <div class="brief-section-label">🏆 Scores</div>
+          <div class="brief-sports">
+            <a class="brief-score"><div class="brief-score-teams"><span>Dodgers</span><span class="brief-score-nums">10–5</span><span>Nationals</span></div><span class="brief-score-badge">MLB</span></a>
+            <a class="brief-score"><div class="brief-score-teams"><span>Golden Knights</span><span class="brief-score-nums">5–1</span><span>Oilers</span></div><span class="brief-score-badge">NHL</span></a>
+          </div>
+        </div>
+
+        <div style="grid-column:1/-1">
+          <div class="brief-section-label">📰 News</div>
+          <div>
+            <div class="brief-news-item"><div class="brief-news-bullet">•</div><div><a class="brief-news-title" href="#">AI is rewiring the world's most prolific film industry – Reuters</a><div class="brief-news-meta"><span class="brief-news-topic">AI</span><span class="brief-news-source">Reuters</span></div></div></div>
+            <div class="brief-news-item"><div class="brief-news-bullet">•</div><div><a class="brief-news-title" href="#">Square Launches Advanced Inventory Management for Restaurants – RTN</a><div class="brief-news-meta"><span class="brief-news-topic">restaurant technology</span><span class="brief-news-source">Restaurant Technology News</span></div></div></div>
+            <div class="brief-news-item"><div class="brief-news-bullet">•</div><div><a class="brief-news-title" href="#">Franklin County sees surge in small business permits – Tribune</a><div class="brief-news-meta"><span class="brief-news-topic">franklin county missouri</span><span class="brief-news-source">Tribune</span></div></div></div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Floating Chat Bar -->
+<div class="chat-float">
+  <div class="chat-float-inner">
+    <div class="chat-bar">
+      <div class="chat-bar-header">
+        <div class="chat-bar-avatar">✦</div>
+        <span class="chat-bar-title">Cerebro Chat</span>
+        <span class="chat-bar-hint">· Ask anything or paste a transcript</span>
+        <button class="chat-bar-toggle">▾ collapse</button>
+      </div>
+      <div class="chat-messages-preview">
+        <div class="chat-msg assistant"><div class="chat-avatar">✦</div><div class="chat-bubble">Good morning! You have 3 tasks due and 3 meetings today. Your heaviest day is Tuesday — want me to help prep?</div></div>
+        <div class="chat-msg user"><div class="chat-avatar" style="background:rgba(99,102,241,0.2);color:var(--indigo)">Me</div><div class="chat-bubble">What's on my plate for the Soundhound project?</div></div>
+        <div class="chat-msg assistant"><div class="chat-avatar">✦</div><div class="chat-bubble">Soundhound Phase 1: 2 open tasks, sync meeting at 2:30 PM today, last note from 4/3.</div></div>
+      </div>
+      <div class="chat-bar-input-row">
+        <textarea class="chat-bar-input" rows="1" placeholder="Ask about your tasks, calendar, notes — or paste a meeting transcript…"></textarea>
+        <button class="chat-bar-send">Send</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>

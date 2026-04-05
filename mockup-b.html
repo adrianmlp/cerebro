@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Mockup B — Sidebar Chat</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#0B0E18;
+  --surface:#13162A;
+  --card:#181B2F;
+  --border:rgba(255,255,255,0.07);
+  --border-hover:rgba(255,255,255,0.14);
+  --indigo:#6366F1;
+  --violet:#A78BFA;
+  --text:#EEF2FF;
+  --text-2:#94A3B8;
+  --text-3:#4B5563;
+  --green:#22C55E;
+  --red:#EF4444;
+  --amber:#F59E0B;
+  --font-body:'DM Sans',sans-serif;
+  --font-head:'Plus Jakarta Sans',sans-serif;
+  --font-mono:'JetBrains Mono',monospace;
+}
+body{font-family:var(--font-body);background:var(--bg);color:var(--text);min-height:100vh;font-size:15px;line-height:1.6;-webkit-font-smoothing:antialiased;display:flex;flex-direction:column;}
+
+/* Nav */
+nav{height:58px;background:rgba(11,14,24,0.95);border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 24px;gap:16px;position:sticky;top:0;z-index:100;backdrop-filter:blur(12px);}
+.nav-logo{font-family:var(--font-head);font-weight:800;font-size:17px;color:var(--text);text-decoration:none;display:flex;align-items:center;gap:8px;}
+.nav-logo-dot{width:8px;height:8px;border-radius:50%;background:var(--indigo);box-shadow:0 0 8px var(--indigo);}
+.nav-links{display:flex;gap:2px;margin-left:auto;}
+.nav-links a{color:var(--text-3);text-decoration:none;font-size:14px;font-weight:500;padding:6px 13px;border-radius:8px;transition:all 0.15s;}
+.nav-links a:hover{color:var(--text-2);}
+.nav-links a.active{color:var(--text);background:rgba(99,102,241,0.12);border:1px solid rgba(99,102,241,0.2);}
+
+/* Main layout: brief + sidebar */
+.layout{display:flex;height:calc(100vh - 58px);overflow:hidden;}
+
+/* Left: scrollable brief */
+.main-col{flex:1;overflow-y:auto;padding:28px 28px 28px;}
+
+/* Right: fixed chat sidebar */
+.chat-sidebar{width:340px;flex-shrink:0;border-left:1px solid var(--border);display:flex;flex-direction:column;background:var(--surface);}
+
+/* Label */
+.mockup-label{display:inline-flex;align-items:center;gap:8px;background:rgba(167,139,250,0.12);border:1px solid rgba(167,139,250,0.25);color:var(--violet);font-size:12px;font-weight:700;padding:5px 14px;border-radius:20px;margin-bottom:22px;letter-spacing:0.5px;}
+
+/* Section heading */
+.section-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;}
+.section-title{font-family:var(--font-head);font-size:18px;font-weight:800;display:flex;align-items:center;gap:9px;}
+.section-icon{width:34px;height:34px;border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:16px;}
+.section-icon.amber{background:rgba(245,158,11,0.15);color:var(--amber);}
+.section-meta{font-size:13px;color:var(--text-3);}
+
+/* Collapsed pills row */
+.pills-row{display:flex;gap:10px;margin-bottom:22px;}
+.pill-card{flex:1;background:var(--card);border:1px solid var(--border);border-radius:12px;padding:12px 16px;display:flex;align-items:center;gap:10px;cursor:pointer;transition:border-color 0.15s;}
+.pill-card:hover{border-color:var(--border-hover);}
+.pill-icon{width:28px;height:28px;border-radius:7px;display:flex;align-items:center;justify-content:center;font-size:13px;flex-shrink:0;}
+.pill-icon.indigo{background:rgba(99,102,241,0.15);color:var(--indigo);}
+.pill-icon.violet{background:rgba(167,139,250,0.15);color:var(--violet);}
+.pill-label{font-size:14px;font-weight:600;}
+.pill-sub{font-size:11px;color:var(--text-3);}
+.pill-chevron{margin-left:auto;color:var(--text-3);font-size:11px;}
+
+/* Brief sections */
+.brief-sections{display:flex;flex-direction:column;gap:18px;}
+.brief-block{background:var(--card);border:1px solid var(--border);border-radius:14px;overflow:hidden;}
+.brief-block-header{display:flex;align-items:center;gap:8px;padding:13px 18px;border-bottom:1px solid var(--border);}
+.brief-block-label{font-size:11px;font-weight:700;letter-spacing:0.8px;text-transform:uppercase;color:var(--text-3);}
+.brief-block-body{padding:14px 18px;}
+
+.brief-meeting-item{display:flex;align-items:center;gap:12px;padding:7px 0;border-bottom:1px solid var(--border);}
+.brief-meeting-item:last-child{border:none;}
+.brief-meeting-time{font-size:12px;font-family:var(--font-mono);color:var(--indigo);width:65px;flex-shrink:0;}
+.brief-meeting-title{font-size:14px;}
+.brief-meeting-badge{margin-left:auto;font-size:10px;background:rgba(56,189,248,0.1);color:#38BDF8;border:1px solid rgba(56,189,248,0.2);border-radius:20px;padding:2px 8px;}
+
+.brief-stocks{display:flex;flex-wrap:wrap;gap:8px;}
+.brief-stock{display:flex;align-items:center;gap:8px;padding:8px 14px;background:rgba(255,255,255,0.03);border:1px solid var(--border);border-radius:10px;text-decoration:none;}
+.brief-stock:hover{border-color:var(--border-hover);}
+.stock-sym{font-weight:700;font-size:14px;font-family:var(--font-mono);}
+.stock-price{font-size:13px;color:var(--text-2);}
+.stock-chg{font-size:12px;font-weight:600;}
+.stock-chg.up{color:var(--green);}
+.stock-chg.down{color:var(--red);}
+.stock-closed{font-size:10px;color:var(--text-3);}
+
+.brief-sports{display:flex;flex-wrap:wrap;gap:8px;}
+.brief-score{display:flex;align-items:center;gap:10px;padding:8px 14px;background:rgba(255,255,255,0.03);border:1px solid var(--border);border-radius:10px;font-size:13px;text-decoration:none;}
+.brief-score:hover{border-color:var(--border-hover);}
+.score-teams{display:flex;align-items:center;gap:6px;font-weight:600;}
+.score-nums{font-family:var(--font-mono);color:var(--violet);font-weight:700;}
+.score-badge{font-size:10px;color:var(--text-3);}
+
+.news-item{display:flex;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);}
+.news-item:last-child{border:none;}
+.news-dot{color:var(--indigo);font-size:18px;flex-shrink:0;margin-top:-1px;}
+.news-title{font-size:14px;color:var(--text);text-decoration:none;line-height:1.4;}
+.news-title:hover{color:var(--violet);}
+.news-meta{margin-top:3px;display:flex;align-items:center;gap:6px;}
+.news-topic{font-size:10px;font-weight:700;background:rgba(99,102,241,0.1);border:1px solid rgba(99,102,241,0.2);color:var(--violet);padding:2px 7px;border-radius:20px;}
+.news-source{font-size:11px;color:var(--text-3);}
+
+.due-item{display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid var(--border);font-size:14px;}
+.due-item:last-child{border:none;}
+.due-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0;}
+.due-dot.U{background:#EF4444;}
+.due-dot.H{background:#F97316;}
+.due-dot.N{background:#6366F1;}
+
+/* Chat sidebar */
+.chat-header{padding:16px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px;}
+.chat-header-icon{width:28px;height:28px;border-radius:8px;background:rgba(99,102,241,0.2);display:flex;align-items:center;justify-content:center;color:var(--indigo);font-size:14px;}
+.chat-header-title{font-family:var(--font-head);font-size:15px;font-weight:700;}
+.chat-header-sub{font-size:11px;color:var(--text-3);margin-top:1px;}
+.chat-online{margin-left:auto;width:7px;height:7px;border-radius:50%;background:var(--green);box-shadow:0 0 6px var(--green);}
+
+.chat-messages{flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:10px;}
+.chat-msg{display:flex;gap:8px;align-items:flex-start;}
+.chat-msg.user{flex-direction:row-reverse;}
+.chat-bubble{padding:9px 13px;font-size:13px;line-height:1.5;max-width:85%;}
+.chat-msg.assistant .chat-bubble{background:rgba(99,102,241,0.1);border:1px solid rgba(99,102,241,0.18);border-radius:2px 12px 12px 12px;color:var(--text-2);}
+.chat-msg.user .chat-bubble{background:rgba(99,102,241,0.2);border:1px solid rgba(99,102,241,0.3);border-radius:12px 2px 12px 12px;color:var(--text);}
+.chat-av{width:24px;height:24px;border-radius:7px;display:flex;align-items:center;justify-content:center;font-size:11px;flex-shrink:0;margin-top:2px;}
+.chat-av.ai{background:rgba(99,102,241,0.15);color:var(--indigo);}
+.chat-av.me{background:rgba(255,255,255,0.08);}
+
+.chat-input-area{padding:12px 14px;border-top:1px solid var(--border);}
+.chat-input-row{display:flex;gap:8px;align-items:flex-end;}
+.chat-input{flex:1;background:rgba(255,255,255,0.04);border:1px solid var(--border);border-radius:10px;color:var(--text);font-family:var(--font-body);font-size:14px;padding:9px 13px;outline:none;resize:none;max-height:100px;}
+.chat-input:focus{border-color:rgba(99,102,241,0.4);}
+.chat-input::placeholder{color:var(--text-3);}
+.chat-send{background:var(--indigo);border:none;border-radius:9px;color:#fff;cursor:pointer;padding:9px 16px;font-size:13px;font-weight:600;font-family:var(--font-body);}
+</style>
+</head>
+<body>
+
+<nav>
+  <a class="nav-logo" href="#"><div class="nav-logo-dot"></div>Cerebro</a>
+  <div class="nav-links">
+    <a href="#" class="active">Dashboard</a>
+    <a href="#">Tasks</a>
+    <a href="#">Calendar</a>
+    <a href="#">Notes</a>
+  </div>
+</nav>
+
+<div class="layout">
+
+  <!-- Left: Brief -->
+  <div class="main-col">
+    <div class="mockup-label">✦ Mockup B — Sidebar Chat</div>
+
+    <div class="section-head">
+      <div class="section-title">
+        <div class="section-icon amber">📋</div>
+        Daily Brief
+      </div>
+      <div class="section-meta">Sunday, April 6 · 8:02 AM</div>
+    </div>
+
+    <!-- Collapsed task/schedule pills -->
+    <div class="pills-row">
+      <div class="pill-card">
+        <div class="pill-icon indigo">☑</div>
+        <div><div class="pill-label">Tasks</div><div class="pill-sub">3 open · 2 due today</div></div>
+        <div class="pill-chevron">▾</div>
+      </div>
+      <div class="pill-card">
+        <div class="pill-icon violet">📅</div>
+        <div><div class="pill-label">Schedule</div><div class="pill-sub">4 events today</div></div>
+        <div class="pill-chevron">▾</div>
+      </div>
+    </div>
+
+    <div class="brief-sections">
+
+      <div class="brief-block">
+        <div class="brief-block-header"><span>📌</span><span class="brief-block-label">Due Today</span></div>
+        <div class="brief-block-body">
+          <div class="due-item"><div class="due-dot U"></div>Review Soundhound proposal deck</div>
+          <div class="due-item"><div class="due-dot H"></div>Send SteerCo follow-up notes</div>
+          <div class="due-item"><div class="due-dot N"></div>Weekly team check-in prep</div>
+        </div>
+      </div>
+
+      <div class="brief-block">
+        <div class="brief-block-header"><span>📅</span><span class="brief-block-label">Today's Meetings</span></div>
+        <div class="brief-block-body">
+          <div class="brief-meeting-item"><span class="brief-meeting-time">9:00 AM</span><span class="brief-meeting-title">Restaurant Tech Weekly</span><span class="brief-meeting-badge">🏢 Work</span></div>
+          <div class="brief-meeting-item"><span class="brief-meeting-time">11:00 AM</span><span class="brief-meeting-title">SteerCo — Catering Review</span><span class="brief-meeting-badge">🏢 Work</span></div>
+          <div class="brief-meeting-item"><span class="brief-meeting-time">2:30 PM</span><span class="brief-meeting-title">Soundhound Phase 1 Sync</span><span class="brief-meeting-badge">🏢 Work</span></div>
+        </div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:18px;">
+        <div class="brief-block">
+          <div class="brief-block-header"><span>📈</span><span class="brief-block-label">Stocks</span></div>
+          <div class="brief-block-body">
+            <div class="brief-stocks">
+              <a class="brief-stock"><span class="stock-sym">SPY</span><span class="stock-price">$536.22</span><span class="stock-chg down">-1.2%</span><span class="stock-closed">Closed</span></a>
+              <a class="brief-stock"><span class="stock-sym">GOOG</span><span class="stock-price">$162.45</span><span class="stock-chg up">+0.8%</span><span class="stock-closed">Closed</span></a>
+              <a class="brief-stock"><span class="stock-sym">TSLA</span><span class="stock-price">$248.10</span><span class="stock-chg down">-2.4%</span><span class="stock-closed">Closed</span></a>
+            </div>
+          </div>
+        </div>
+        <div class="brief-block">
+          <div class="brief-block-header"><span>🏆</span><span class="brief-block-label">Scores</span></div>
+          <div class="brief-block-body">
+            <div class="brief-sports">
+              <a class="brief-score"><div class="score-teams"><span>Dodgers</span><span class="score-nums">10–5</span><span>Nationals</span></div><span class="score-badge">MLB</span></a>
+              <a class="brief-score"><div class="score-teams"><span>Golden Knights</span><span class="score-nums">5–1</span><span>Oilers</span></div><span class="score-badge">NHL</span></a>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="brief-block">
+        <div class="brief-block-header"><span>📰</span><span class="brief-block-label">News</span></div>
+        <div class="brief-block-body">
+          <div class="news-item"><div class="news-dot">•</div><div><a class="news-title" href="#">AI is rewiring the world's most prolific film industry – Reuters</a><div class="news-meta"><span class="news-topic">AI</span><span class="news-source">Reuters</span></div></div></div>
+          <div class="news-item"><div class="news-dot">•</div><div><a class="news-title" href="#">Square Launches Advanced Inventory Management for Restaurants</a><div class="news-meta"><span class="news-topic">restaurant technology</span><span class="news-source">RTN</span></div></div></div>
+          <div class="news-item"><div class="news-dot">•</div><div><a class="news-title" href="#">Franklin County sees surge in small business permits – Tribune</a><div class="news-meta"><span class="news-topic">franklin county missouri</span><span class="news-source">Tribune</span></div></div></div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Right: Chat sidebar -->
+  <div class="chat-sidebar">
+    <div class="chat-header">
+      <div class="chat-header-icon">✦</div>
+      <div>
+        <div class="chat-header-title">Cerebro Chat</div>
+        <div class="chat-header-sub">Ask anything · paste a transcript</div>
+      </div>
+      <div class="chat-online"></div>
+    </div>
+    <div class="chat-messages">
+      <div class="chat-msg assistant">
+        <div class="chat-av ai">✦</div>
+        <div class="chat-bubble">Good morning! You have 3 tasks due and 3 meetings today. Your heaviest day is Tuesday — want me to help you prep?</div>
+      </div>
+      <div class="chat-msg user">
+        <div class="chat-av me">Me</div>
+        <div class="chat-bubble">What's on my plate for the Soundhound project?</div>
+      </div>
+      <div class="chat-msg assistant">
+        <div class="chat-av ai">✦</div>
+        <div class="chat-bubble">Soundhound Phase 1 has 2 open tasks, a sync at 2:30 PM today, and your last note was from 4/3 covering Smart Answering and subset locations.</div>
+      </div>
+      <div class="chat-msg user">
+        <div class="chat-av me">Me</div>
+        <div class="chat-bubble">Remind me to send the follow-up notes after the SteerCo</div>
+      </div>
+      <div class="chat-msg assistant">
+        <div class="chat-av ai">✦</div>
+        <div class="chat-bubble">Added: "Send SteerCo follow-up notes" due today at HIGH priority. ✓</div>
+      </div>
+    </div>
+    <div class="chat-input-area">
+      <div class="chat-input-row">
+        <textarea class="chat-input" rows="1" placeholder="Ask anything…"></textarea>
+        <button class="chat-send">Send</button>
+      </div>
+    </div>
+  </div>
+
+</div>
+</body>
+</html>

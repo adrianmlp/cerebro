@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Mockup C — Command Bar</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#0D0F1C;
+  --surface:#111320;
+  --card:#161929;
+  --border:rgba(255,255,255,0.07);
+  --border-hover:rgba(255,255,255,0.13);
+  --indigo:#6366F1;
+  --violet:#A78BFA;
+  --text:#F0F4FF;
+  --text-2:#8892A4;
+  --text-3:#3D4455;
+  --green:#22C55E;
+  --red:#EF4444;
+  --amber:#F59E0B;
+  --cyan:#06B6D4;
+  --font-body:'DM Sans',sans-serif;
+  --font-head:'Plus Jakarta Sans',sans-serif;
+  --font-mono:'JetBrains Mono',monospace;
+}
+body{font-family:var(--font-body);background:var(--bg);color:var(--text);min-height:100vh;font-size:15px;line-height:1.6;-webkit-font-smoothing:antialiased;}
+
+/* Nav — minimal top strip */
+nav{height:52px;background:var(--surface);border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 28px;gap:20px;position:sticky;top:0;z-index:100;}
+.nav-logo{font-family:var(--font-head);font-weight:800;font-size:17px;color:var(--text);text-decoration:none;letter-spacing:-0.3px;display:flex;align-items:center;gap:8px;}
+.logo-mark{width:24px;height:24px;border-radius:7px;background:linear-gradient(135deg,var(--indigo),var(--violet));display:flex;align-items:center;justify-content:center;font-size:13px;}
+.nav-links{display:flex;gap:0;}
+.nav-links a{color:var(--text-3);text-decoration:none;font-size:14px;padding:6px 14px;border-radius:6px;transition:color 0.15s;}
+.nav-links a:hover{color:var(--text-2);}
+.nav-links a.active{color:var(--text);}
+.nav-date{margin-left:auto;font-size:13px;color:var(--text-3);font-family:var(--font-mono);}
+
+/* Page */
+.page{max-width:960px;margin:0 auto;padding:24px 24px 180px;}
+
+/* Label */
+.mockup-label{display:inline-flex;align-items:center;gap:8px;background:rgba(6,182,212,0.1);border:1px solid rgba(6,182,212,0.25);color:var(--cyan);font-size:12px;font-weight:700;padding:5px 14px;border-radius:20px;margin-bottom:20px;letter-spacing:0.5px;}
+
+/* Brief header */
+.brief-header{display:flex;align-items:center;gap:14px;margin-bottom:22px;}
+.brief-date{font-family:var(--font-head);font-size:22px;font-weight:800;letter-spacing:-0.5px;}
+.brief-meta{font-size:13px;color:var(--text-3);}
+.brief-actions{margin-left:auto;display:flex;gap:8px;}
+.btn{border:none;border-radius:8px;cursor:pointer;font-family:var(--font-body);font-weight:600;font-size:13px;padding:6px 14px;transition:all 0.15s;}
+.btn-ghost{background:rgba(255,255,255,0.05);color:var(--text-2);}
+.btn-ghost:hover{background:rgba(255,255,255,0.09);color:var(--text);}
+
+/* Collapsed pills */
+.pills-row{display:flex;gap:10px;margin-bottom:20px;}
+.pill{display:flex;align-items:center;gap:9px;background:var(--card);border:1px solid var(--border);border-radius:10px;padding:10px 15px;cursor:pointer;transition:border-color 0.15s;flex:1;}
+.pill:hover{border-color:var(--border-hover);}
+.pill-icon{width:26px;height:26px;border-radius:7px;display:flex;align-items:center;justify-content:center;font-size:13px;}
+.pill-icon.i{background:rgba(99,102,241,0.15);color:var(--indigo);}
+.pill-icon.v{background:rgba(167,139,250,0.15);color:var(--violet);}
+.pill-text{font-size:14px;font-weight:600;}
+.pill-sub{font-size:11px;color:var(--text-3);}
+.pill-arr{margin-left:auto;font-size:11px;color:var(--text-3);}
+
+/* Brief 2-col bento grid */
+.bento{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
+.bento-card{background:var(--card);border:1px solid var(--border);border-radius:14px;overflow:hidden;}
+.bento-card.wide{grid-column:1/-1;}
+.bento-head{display:flex;align-items:center;gap:8px;padding:12px 16px;border-bottom:1px solid var(--border);}
+.bento-label{font-size:11px;font-weight:700;letter-spacing:0.7px;text-transform:uppercase;color:var(--text-3);}
+.bento-body{padding:14px 16px;}
+
+/* Meetings */
+.mtg-row{display:flex;align-items:center;gap:12px;padding:7px 0;border-bottom:1px solid var(--border);font-size:14px;}
+.mtg-row:last-child{border:none;}
+.mtg-time{font-size:12px;font-family:var(--font-mono);color:var(--indigo);width:62px;flex-shrink:0;}
+.mtg-dot{width:6px;height:6px;border-radius:50%;background:var(--cyan);flex-shrink:0;}
+
+/* Due today */
+.due-row{display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid var(--border);font-size:14px;}
+.due-row:last-child{border:none;}
+.pri-bar{width:3px;height:18px;border-radius:2px;flex-shrink:0;}
+.pri-bar.u{background:#EF4444;}
+.pri-bar.h{background:#F97316;}
+.pri-bar.n{background:#6366F1;}
+
+/* Stocks */
+.stocks-row{display:flex;flex-wrap:wrap;gap:8px;}
+.stock-chip{display:flex;align-items:center;gap:7px;background:rgba(255,255,255,0.03);border:1px solid var(--border);border-radius:9px;padding:7px 12px;text-decoration:none;}
+.stock-chip:hover{border-color:var(--border-hover);}
+.stock-sym{font-weight:700;font-size:14px;font-family:var(--font-mono);color:var(--text);}
+.stock-price{font-size:13px;color:var(--text-2);}
+.stock-chg{font-size:12px;font-weight:600;}
+.up{color:var(--green);}
+.dn{color:var(--red);}
+.closed{font-size:10px;color:var(--text-3);}
+
+/* Scores */
+.scores-row{display:flex;flex-wrap:wrap;gap:8px;}
+.score-chip{display:flex;align-items:center;gap:8px;background:rgba(255,255,255,0.03);border:1px solid var(--border);border-radius:9px;padding:7px 12px;text-decoration:none;font-size:13px;}
+.score-chip:hover{border-color:var(--border-hover);}
+.score-teams{display:flex;align-items:center;gap:5px;font-weight:600;color:var(--text);}
+.score-n{font-family:var(--font-mono);color:var(--violet);font-weight:700;}
+.score-lg{font-size:10px;color:var(--text-3);}
+
+/* News */
+.news-row{display:flex;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);}
+.news-row:last-child{border:none;}
+.news-bar{width:2px;background:var(--indigo);border-radius:2px;flex-shrink:0;margin:3px 0;}
+.news-title{font-size:14px;color:var(--text);text-decoration:none;line-height:1.4;}
+.news-title:hover{color:var(--violet);}
+.news-meta{margin-top:3px;display:flex;gap:6px;align-items:center;}
+.news-tag{font-size:10px;font-weight:700;background:rgba(99,102,241,0.1);border:1px solid rgba(99,102,241,0.2);color:var(--violet);padding:2px 7px;border-radius:20px;}
+.news-src{font-size:11px;color:var(--text-3);}
+
+/* ── Floating command bar ── */
+.cmd-float{position:fixed;bottom:24px;left:0;right:0;padding:0 24px;z-index:200;pointer-events:none;}
+.cmd-wrap{max-width:960px;margin:0 auto;pointer-events:all;}
+.cmd-bar{background:rgba(17,19,32,0.97);border:1px solid rgba(99,102,241,0.3);border-radius:16px;backdrop-filter:blur(24px);box-shadow:0 8px 48px rgba(0,0,0,0.6),0 0 0 1px rgba(99,102,241,0.1);overflow:hidden;}
+
+/* Collapsed state */
+.cmd-collapsed{display:flex;align-items:center;gap:12px;padding:12px 18px;cursor:text;}
+.cmd-prompt{display:flex;align-items:center;gap:8px;flex:1;}
+.cmd-icon{width:26px;height:26px;border-radius:7px;background:rgba(99,102,241,0.2);display:flex;align-items:center;justify-content:center;color:var(--indigo);font-size:13px;flex-shrink:0;}
+.cmd-placeholder{font-size:15px;color:var(--text-3);}
+.cmd-shortcut{font-size:11px;font-family:var(--font-mono);background:rgba(255,255,255,0.06);border:1px solid var(--border);border-radius:5px;padding:2px 7px;color:var(--text-3);}
+
+/* Expanded state */
+.cmd-expanded{display:block;}
+.cmd-history{padding:12px 16px 8px;display:flex;flex-direction:column;gap:8px;max-height:200px;overflow-y:auto;border-bottom:1px solid var(--border);}
+.cmd-msg{display:flex;gap:8px;align-items:flex-start;}
+.cmd-msg.user{flex-direction:row-reverse;}
+.cmd-bubble{padding:8px 12px;font-size:13px;line-height:1.5;max-width:80%;}
+.cmd-msg.ai .cmd-bubble{background:rgba(99,102,241,0.08);border:1px solid rgba(99,102,241,0.15);border-radius:2px 10px 10px 10px;color:var(--text-2);}
+.cmd-msg.user .cmd-bubble{background:rgba(99,102,241,0.18);border:1px solid rgba(99,102,241,0.28);border-radius:10px 2px 10px 10px;color:var(--text);}
+.cmd-av{width:22px;height:22px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:10px;flex-shrink:0;margin-top:2px;}
+.cmd-av.ai{background:rgba(99,102,241,0.15);color:var(--indigo);}
+.cmd-av.me{background:rgba(255,255,255,0.07);color:var(--text-3);}
+.cmd-input-row{display:flex;align-items:center;gap:10px;padding:10px 14px;}
+.cmd-input{flex:1;background:transparent;border:none;color:var(--text);font-family:var(--font-body);font-size:15px;outline:none;resize:none;}
+.cmd-input::placeholder{color:var(--text-3);}
+.cmd-actions{display:flex;align-items:center;gap:8px;}
+.cmd-hint{font-size:11px;color:var(--text-3);font-family:var(--font-mono);}
+.cmd-send{background:var(--indigo);border:none;border-radius:8px;color:#fff;cursor:pointer;padding:7px 16px;font-size:13px;font-weight:600;font-family:var(--font-body);}
+</style>
+</head>
+<body>
+
+<nav>
+  <a class="nav-logo" href="#"><div class="logo-mark">✦</div>Cerebro</a>
+  <div class="nav-links">
+    <a href="#" class="active">Dashboard</a>
+    <a href="#">Tasks</a>
+    <a href="#">Calendar</a>
+    <a href="#">Notes</a>
+  </div>
+  <div class="nav-date">Sun Apr 6</div>
+</nav>
+
+<div class="page">
+  <div class="mockup-label">✦ Mockup C — Command Bar</div>
+
+  <div class="brief-header">
+    <div>
+      <div class="brief-date">Good morning, Adrian ☀️</div>
+      <div class="brief-meta">3 tasks due · 3 meetings today · Updated 8:02 AM</div>
+    </div>
+    <div class="brief-actions">
+      <button class="btn btn-ghost">↺ Refresh</button>
+      <button class="btn btn-ghost">⚙ Settings</button>
+    </div>
+  </div>
+
+  <!-- Collapsed pills -->
+  <div class="pills-row">
+    <div class="pill">
+      <div class="pill-icon i">☑</div>
+      <div><div class="pill-text">Tasks</div><div class="pill-sub">3 open · 2 due today</div></div>
+      <div class="pill-arr">▾</div>
+    </div>
+    <div class="pill">
+      <div class="pill-icon v">📅</div>
+      <div><div class="pill-text">Schedule</div><div class="pill-sub">4 events today</div></div>
+      <div class="pill-arr">▾</div>
+    </div>
+  </div>
+
+  <!-- Bento grid -->
+  <div class="bento">
+
+    <div class="bento-card">
+      <div class="bento-head"><span>📌</span><span class="bento-label">Due Today</span></div>
+      <div class="bento-body">
+        <div class="due-row"><div class="pri-bar u"></div>Review Soundhound proposal deck</div>
+        <div class="due-row"><div class="pri-bar h"></div>Send SteerCo follow-up notes</div>
+        <div class="due-row"><div class="pri-bar n"></div>Weekly team check-in prep</div>
+      </div>
+    </div>
+
+    <div class="bento-card">
+      <div class="bento-head"><span>📅</span><span class="bento-label">Today's Meetings</span></div>
+      <div class="bento-body">
+        <div class="mtg-row"><span class="mtg-time">9:00 AM</span><div class="mtg-dot"></div>Restaurant Tech Weekly</div>
+        <div class="mtg-row"><span class="mtg-time">11:00 AM</span><div class="mtg-dot"></div>SteerCo — Catering Review</div>
+        <div class="mtg-row"><span class="mtg-time">2:30 PM</span><div class="mtg-dot"></div>Soundhound Phase 1 Sync</div>
+      </div>
+    </div>
+
+    <div class="bento-card">
+      <div class="bento-head"><span>📈</span><span class="bento-label">Stocks</span></div>
+      <div class="bento-body">
+        <div class="stocks-row">
+          <a class="stock-chip"><span class="stock-sym">SPY</span><span class="stock-price">$536.22</span><span class="stock-chg dn">-1.2%</span><span class="closed">Closed</span></a>
+          <a class="stock-chip"><span class="stock-sym">GOOG</span><span class="stock-price">$162.45</span><span class="stock-chg up">+0.8%</span><span class="closed">Closed</span></a>
+          <a class="stock-chip"><span class="stock-sym">TSLA</span><span class="stock-price">$248.10</span><span class="stock-chg dn">-2.4%</span><span class="closed">Closed</span></a>
+        </div>
+      </div>
+    </div>
+
+    <div class="bento-card">
+      <div class="bento-head"><span>🏆</span><span class="bento-label">Scores</span></div>
+      <div class="bento-body">
+        <div class="scores-row">
+          <a class="score-chip"><div class="score-teams"><span>Dodgers</span><span class="score-n">10–5</span><span>Nationals</span></div><span class="score-lg">MLB</span></a>
+          <a class="score-chip"><div class="score-teams"><span>Golden Knights</span><span class="score-n">5–1</span><span>Oilers</span></div><span class="score-lg">NHL</span></a>
+        </div>
+      </div>
+    </div>
+
+    <div class="bento-card wide">
+      <div class="bento-head"><span>📰</span><span class="bento-label">News</span></div>
+      <div class="bento-body">
+        <div class="news-row"><div class="news-bar"></div><div><a class="news-title" href="#">AI is rewiring the world's most prolific film industry – Reuters</a><div class="news-meta"><span class="news-tag">AI</span><span class="news-src">Reuters</span></div></div></div>
+        <div class="news-row"><div class="news-bar"></div><div><a class="news-title" href="#">Square Launches Advanced Inventory Management for Restaurants</a><div class="news-meta"><span class="news-tag">restaurant technology</span><span class="news-src">RTN</span></div></div></div>
+        <div class="news-row"><div class="news-bar"></div><div><a class="news-title" href="#">Franklin County sees surge in small business permits – Tribune</a><div class="news-meta"><span class="news-tag">franklin county missouri</span><span class="news-src">Tribune</span></div></div></div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- Floating command bar (expanded) -->
+<div class="cmd-float">
+  <div class="cmd-wrap">
+    <div class="cmd-bar">
+      <div class="cmd-expanded">
+        <div class="cmd-history">
+          <div class="cmd-msg ai">
+            <div class="cmd-av ai">✦</div>
+            <div class="cmd-bubble">Good morning! 3 tasks due, 3 meetings today. Biggest thing: Soundhound sync at 2:30 — want a prep summary?</div>
+          </div>
+          <div class="cmd-msg user">
+            <div class="cmd-av me">Me</div>
+            <div class="cmd-bubble">What's on my plate for the Soundhound project?</div>
+          </div>
+          <div class="cmd-msg ai">
+            <div class="cmd-av ai">✦</div>
+            <div class="cmd-bubble">Soundhound Phase 1 — 2 open tasks, sync today at 2:30 PM, last note 4/3 (Smart Answering, subset locations, Corona & Cerritos ordering).</div>
+          </div>
+        </div>
+        <div class="cmd-input-row">
+          <div class="cmd-icon" style="width:22px;height:22px;border-radius:6px;background:rgba(99,102,241,0.15);display:flex;align-items:center;justify-content:center;color:var(--indigo);font-size:12px;flex-shrink:0;">✦</div>
+          <textarea class="cmd-input" rows="1" placeholder="Ask anything or paste a meeting transcript…"></textarea>
+          <div class="cmd-actions">
+            <span class="cmd-hint">⏎ send</span>
+            <button class="cmd-send">Send</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>
