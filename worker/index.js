@@ -626,20 +626,27 @@ async function briefFetchStocks(tickerStr) {
   if (!tickerStr.trim()) return [];
   const symbols = tickerStr.split(',').map(s => s.trim().toUpperCase()).filter(Boolean).slice(0, 12);
   if (!symbols.length) return [];
+  const fields = 'regularMarketPrice,regularMarketChange,regularMarketChangePercent,regularMarketPreviousClose,marketState,shortName';
+  const headers = { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36', 'Accept': 'application/json', 'Accept-Language': 'en-US,en;q=0.9' };
   try {
     const res = await fetch(
-      `https://query1.finance.yahoo.com/v7/finance/quote?symbols=${symbols.join(',')}&fields=regularMarketPrice,regularMarketChange,regularMarketChangePercent,shortName`,
-      { headers: { 'User-Agent': 'Mozilla/5.0', 'Accept': 'application/json' }, cf: { cacheTtl: 300 } }
+      `https://query2.finance.yahoo.com/v7/finance/quote?symbols=${symbols.join(',')}&fields=${fields}`,
+      { headers, cf: { cacheTtl: 300 } }
     );
     if (!res.ok) return [];
     const data = await res.json();
-    return (data.quoteResponse?.result || []).map(q => ({
-      symbol:        q.symbol,
-      name:          q.shortName || q.symbol,
-      price:         q.regularMarketPrice,
-      change:        q.regularMarketChange,
-      changePercent: q.regularMarketChangePercent,
-    }));
+    return (data.quoteResponse?.result || []).map(q => {
+      const marketOpen = q.marketState === 'REGULAR';
+      const price = q.regularMarketPrice || q.regularMarketPreviousClose || 0;
+      return {
+        symbol:        q.symbol,
+        name:          q.shortName || q.symbol,
+        price,
+        change:        q.regularMarketChange,
+        changePercent: q.regularMarketChangePercent,
+        marketOpen,
+      };
+    });
   } catch { return []; }
 }
 
@@ -659,6 +666,8 @@ async function briefFetchSports(teamStr) {
     ['basketball', 'mens-college-basketball'],
   ];
 
+  const ESPN_PATH = { 'nfl':'nfl','nba':'nba','mlb':'mlb','nhl':'nhl','usa.1':'soccer','wnba':'wnba','college-football':'college-football','mens-college-basketball':'mens-college-basketball' };
+
   const settled = await Promise.allSettled(
     leagues.map(([sport, league]) =>
       fetch(`https://site.api.espn.com/apis/site/v2/sports/${sport}/${league}/scoreboard`,
@@ -668,6 +677,7 @@ async function briefFetchSports(teamStr) {
         const comp = ev.competitions?.[0];
         const home = comp?.competitors?.find(c => c.homeAway === 'home');
         const away = comp?.competitors?.find(c => c.homeAway === 'away');
+        const sportPath = ESPN_PATH[league] || league;
         return {
           league,
           home:      home?.team?.displayName || '',
@@ -676,6 +686,7 @@ async function briefFetchSports(teamStr) {
           awayScore: away?.score ?? '',
           status:    comp?.status?.type?.description || '',
           date:      ev.date || '',
+          link:      `https://www.espn.com/${sportPath}/game/_/gameId/${ev.id}`,
         };
       }))
     )
@@ -686,7 +697,12 @@ async function briefFetchSports(teamStr) {
   return allGames.filter(g => {
     const hn = g.home.toLowerCase();
     const an = g.away.toLowerCase();
-    return teams.some(t => hn.includes(t) || an.includes(t) || hn.split(' ').some(w => t.includes(w) && w.length > 3) || an.split(' ').some(w => t.includes(w) && w.length > 3));
+    return teams.some(t => {
+      if (hn.includes(t) || an.includes(t)) return true;
+      // All significant words in the user's term must appear in the team name
+      const tWords = t.split(' ').filter(w => w.length > 3);
+      return tWords.length > 0 && (tWords.every(w => hn.includes(w)) || tWords.every(w => an.includes(w)));
+    });
   });
 }
 
