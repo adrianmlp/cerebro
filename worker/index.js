@@ -626,28 +626,30 @@ async function briefFetchStocks(tickerStr) {
   if (!tickerStr.trim()) return [];
   const symbols = tickerStr.split(',').map(s => s.trim().toUpperCase()).filter(Boolean).slice(0, 12);
   if (!symbols.length) return [];
-  const fields = 'regularMarketPrice,regularMarketChange,regularMarketChangePercent,regularMarketPreviousClose,marketState,shortName';
-  const headers = { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36', 'Accept': 'application/json', 'Accept-Language': 'en-US,en;q=0.9' };
-  try {
-    const res = await fetch(
-      `https://query2.finance.yahoo.com/v7/finance/quote?symbols=${symbols.join(',')}&fields=${fields}`,
-      { headers, cf: { cacheTtl: 300 } }
-    );
-    if (!res.ok) return [];
-    const data = await res.json();
-    return (data.quoteResponse?.result || []).map(q => {
-      const marketOpen = q.marketState === 'REGULAR';
-      const price = q.regularMarketPrice || q.regularMarketPreviousClose || 0;
-      return {
-        symbol:        q.symbol,
-        name:          q.shortName || q.symbol,
-        price,
-        change:        q.regularMarketChange,
-        changePercent: q.regularMarketChangePercent,
-        marketOpen,
-      };
-    });
-  } catch { return []; }
+  const headers = { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36', 'Accept': 'application/json' };
+  const results = await Promise.allSettled(
+    symbols.map(sym =>
+      fetch(`https://query1.finance.yahoo.com/v8/finance/chart/${sym}?interval=1d&range=2d`, { headers, cf: { cacheTtl: 300 } })
+        .then(r => r.ok ? r.json() : null)
+        .then(data => {
+          const meta = data?.chart?.result?.[0]?.meta;
+          if (!meta) return null;
+          const price = meta.regularMarketPrice || meta.previousClose || 0;
+          const prevClose = meta.chartPreviousClose || meta.previousClose || price;
+          const change = price - prevClose;
+          const changePercent = prevClose ? (change / prevClose) * 100 : 0;
+          return {
+            symbol:        sym,
+            name:          meta.longName || meta.shortName || sym,
+            price,
+            change,
+            changePercent,
+            marketOpen:    meta.marketState === 'REGULAR',
+          };
+        })
+    )
+  );
+  return results.map(r => r.status === 'fulfilled' ? r.value : null).filter(Boolean);
 }
 
 async function briefFetchSports(teamStr) {
@@ -1287,7 +1289,7 @@ Reply in 1-3 sentences. For create task/event return JSON: {"message":"...","act
           briefFetchNews(topicRow?.value    || ''),
         ]);
 
-        return json({ dueToday: dueTasks, meetings, stocks, sports, news });
+        return json({ dueToday: dueTasks, meetings, stocks, sports, news, settings: { tickers: tickerRow?.value||'', teams: teamRow?.value||'', topics: topicRow?.value||'' } });
       }
 
       return json({ error: 'Not found' }, 404);

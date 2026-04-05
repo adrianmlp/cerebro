@@ -341,7 +341,9 @@ async function loadBrief() {
             ${!s.marketOpen ? `<span class="brief-stock-closed">Closed</span>` : ''}
           </a>`;
         }).join('')}</div>`
-      : `<div class="brief-empty">No tickers configured — click ⚙ Settings to add some</div>`;
+      : data.settings?.tickers
+        ? `<div class="brief-empty">Could not load stock data — markets may be unavailable</div>`
+        : `<div class="brief-empty">No tickers configured — click ⚙ Settings to add some</div>`;
 
     // Sports
     const sportSec = data.sports?.length
