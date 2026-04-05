@@ -1,12 +1,32 @@
 {
   "name": "Cerebro",
   "short_name": "Cerebro",
+  "description": "Personal productivity dashboard",
   "start_url": "/index.html",
+  "scope": "/",
   "display": "standalone",
+  "orientation": "portrait-primary",
   "background_color": "#0F1117",
   "theme_color": "#6366F1",
   "icons": [
-    { "src": "favicon.ico", "sizes": "any" }
+    {
+      "src": "/icons/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
   ],
   "share_target": {
     "action": "/save.html",
@@ -16,5 +36,10 @@
       "text": "text",
       "url": "url"
     }
-  }
+  },
+  "shortcuts": [
+    { "name": "Tasks",    "url": "/tasks.html",    "description": "Open tasks" },
+    { "name": "Calendar", "url": "/calendar.html", "description": "Open calendar" },
+    { "name": "Saves",    "url": "/saves.html",    "description": "Open saves" }
+  ]
 }

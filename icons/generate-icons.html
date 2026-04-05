@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html>
+<head><meta charset="UTF-8"><title>Generate Icons</title></head>
+<body style="font-family:sans-serif;padding:32px;background:#0F1117;color:#F1F5F9">
+<h2>Cerebro Icon Generator</h2>
+<p style="color:#94A3B8">Click each button to download the PNG icon, then save it to the <code>icons/</code> folder.</p>
+<div style="display:flex;gap:16px;margin:24px 0;align-items:flex-end">
+  <div>
+    <canvas id="c192" width="192" height="192" style="border-radius:36px;display:block;margin-bottom:8px"></canvas>
+    <button onclick="download(192)">Download icon-192.png</button>
+  </div>
+  <div>
+    <canvas id="c512" width="512" height="512" style="border-radius:96px;display:block;width:192px;height:192px;margin-bottom:8px"></canvas>
+    <button onclick="download(512)">Download icon-512.png</button>
+  </div>
+</div>
+
+<script>
+const SVG_SRC = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="96" fill="#0F1117"/>
+  <circle cx="256" cy="256" r="168" fill="none" stroke="#6366F1" stroke-width="24" opacity="0.25"/>
+  <path d="M 188 200 C 188 160, 230 132, 270 148 C 290 130, 330 138, 340 168 C 368 172, 384 200, 372 228 C 388 256, 376 286, 352 298 C 352 328, 328 348, 300 344 C 284 364, 256 368, 236 352 C 212 360, 188 340, 188 312 C 164 300, 152 268, 168 244 C 152 218, 164 192, 188 200 Z"
+    fill="none" stroke="#6366F1" stroke-width="20" stroke-linecap="round" stroke-linejoin="round"/>
+  <line x1="256" y1="148" x2="256" y2="360" stroke="#6366F1" stroke-width="12" stroke-linecap="round" opacity="0.5"/>
+  <line x1="188" y1="256" x2="324" y2="256" stroke="#6366F1" stroke-width="10" stroke-linecap="round" opacity="0.4"/>
+  <line x1="192" y1="220" x2="320" y2="220" stroke="#6366F1" stroke-width="8" stroke-linecap="round" opacity="0.25"/>
+  <line x1="192" y1="292" x2="320" y2="292" stroke="#6366F1" stroke-width="8" stroke-linecap="round" opacity="0.25"/>
+</svg>`;
+
+function drawToCanvas(size) {
+  const canvas = document.getElementById('c' + size);
+  const ctx = canvas.getContext('2d');
+  const blob = new Blob([SVG_SRC], { type: 'image/svg+xml' });
+  const url = URL.createObjectURL(blob);
+  const img = new Image();
+  img.onload = () => { ctx.drawImage(img, 0, 0, size, size); URL.revokeObjectURL(url); };
+  img.src = url;
+}
+
+function download(size) {
+  const canvas = document.getElementById('c' + size);
+  const a = document.createElement('a');
+  a.download = `icon-${size}.png`;
+  a.href = canvas.toDataURL('image/png');
+  a.click();
+}
+
+drawToCanvas(192);
+drawToCanvas(512);
+</script>
+</body>
+</html>
