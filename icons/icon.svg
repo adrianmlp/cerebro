@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- Background -->
+  <rect width="512" height="512" rx="96" fill="#0F1117"/>
+  <!-- Indigo glow ring -->
+  <circle cx="256" cy="256" r="168" fill="none" stroke="#6366F1" stroke-width="24" opacity="0.25"/>
+  <!-- Brain-like arcs representing cerebro -->
+  <path d="M 188 200
+    C 188 160, 230 132, 270 148
+    C 290 130, 330 138, 340 168
+    C 368 172, 384 200, 372 228
+    C 388 256, 376 286, 352 298
+    C 352 328, 328 348, 300 344
+    C 284 364, 256 368, 236 352
+    C 212 360, 188 340, 188 312
+    C 164 300, 152 268, 168 244
+    C 152 218, 164 192, 188 200 Z"
+    fill="none" stroke="#6366F1" stroke-width="20" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- Center line -->
+  <line x1="256" y1="148" x2="256" y2="360" stroke="#6366F1" stroke-width="12" stroke-linecap="round" opacity="0.5"/>
+  <!-- Horizontal connectors -->
+  <line x1="188" y1="256" x2="324" y2="256" stroke="#6366F1" stroke-width="10" stroke-linecap="round" opacity="0.4"/>
+  <line x1="192" y1="220" x2="320" y2="220" stroke="#6366F1" stroke-width="8" stroke-linecap="round" opacity="0.25"/>
+  <line x1="192" y1="292" x2="320" y2="292" stroke="#6366F1" stroke-width="8" stroke-linecap="round" opacity="0.25"/>
+</svg>

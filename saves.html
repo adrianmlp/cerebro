@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Cerebro — Saves</title>
+  <meta name="worker-url" content="https://cerebro-worker.mlpdev.workers.dev" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+<nav id="app-nav">
+  <a class="nav-logo" href="index.html">Cerebro</a>
+  <span class="nav-date" id="nav-date"></span>
+  <ul class="nav-links">
+    <li><a href="index.html"    data-page="dashboard">Dashboard</a></li>
+    <li><a href="tasks.html"   data-page="tasks">Tasks</a></li>
+    <li><a href="calendar.html" data-page="calendar">Calendar</a></li>
+    <li><a href="notes.html"   data-page="notes">Notes</a></li>
+    <li><a href="saves.html"   data-page="saves">Saves</a></li>
+  </ul>
+  <button id="mobile-menu-btn">☰</button>
+</nav>
+
+<main class="page-content">
+
+  <div class="page-header">
+    <div class="page-title">
+      <div class="page-title-icon">🔖</div>
+      Saves
+    </div>
+    <div style="margin-left:auto;display:flex;gap:8px;align-items:center">
+      <button class="btn btn-primary" id="add-save-btn">+ Save URL</button>
+    </div>
+  </div>
+
+  <!-- Filters -->
+  <div style="display:flex;gap:12px;margin-bottom:20px;flex-wrap:wrap;align-items:center">
+    <div class="search-wrap" style="flex:1;min-width:180px">
+      <span class="search-icon">⌕</span>
+      <input class="input" id="search-input" placeholder="Search saves…" />
+    </div>
+    <div class="filter-pills" id="type-filters">
+      <button class="filter-pill active" data-type="">All</button>
+      <button class="filter-pill" data-type="article">Articles</button>
+      <button class="filter-pill" data-type="video">Videos</button>
+      <button class="filter-pill" data-type="link">Links</button>
+    </div>
+    <button class="btn btn-ghost btn-sm" id="toggle-unread-btn">Unread Only</button>
+  </div>
+
+  <!-- Tag filter row -->
+  <div id="tag-pills" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:20px;min-height:0"></div>
+
+  <!-- Saves grid -->
+  <div id="saves-grid">
+    <div class="empty-state"><div class="spinner"></div></div>
+  </div>
+
+</main>
+
+<!-- Add Save Modal -->
+<div class="modal-backdrop" id="save-modal">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title" id="modal-title">Save URL</div>
+      <button class="btn-icon" onclick="closeModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="edit-id" />
+      <div class="form-group">
+        <label class="form-label">URL *</label>
+        <input class="input" id="save-url" placeholder="https://…" type="url" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Title <span style="color:var(--text-3);font-weight:400">(auto-detected if blank)</span></label>
+        <input class="input" id="save-title" placeholder="Optional title override" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Tags <span style="color:var(--text-3);font-weight:400">(comma-separated)</span></label>
+        <input class="input" id="save-tags" placeholder="tech, reading, work" />
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" id="modal-save-btn">Save</button>
+    </div>
+  </div>
+</div>
+
+<nav id="mobile-bottom-nav">
+  <ul>
+    <li><a href="index.html"    data-page="dashboard"><span class="mobile-nav-icon">⊞</span>Dashboard</a></li>
+    <li><a href="tasks.html"   data-page="tasks"><span class="mobile-nav-icon">☑</span>Tasks</a></li>
+    <li><a href="calendar.html" data-page="calendar"><span class="mobile-nav-icon">📅</span>Calendar</a></li>
+    <li><a href="notes.html"   data-page="notes"><span class="mobile-nav-icon">📝</span>Notes</a></li>
+    <li><a href="saves.html"   data-page="saves"><span class="mobile-nav-icon">🔖</span>Saves</a></li>
+  </ul>
+</nav>
+
+<div id="toast-container"></div>
+<script type="module" src="saves.js"></script>
+</body>
+</html>
