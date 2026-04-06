@@ -95,6 +95,7 @@ When something fails repeatedly, when Adrian has to re-explain, or when a workar
 
 - Google News RSS blocks Cloudflare Worker IPs on some edge regions; use Bing RSS instead.
 - Yahoo Finance v7 `/quote` requires crumb/cookie; use v8 `/chart/{symbol}` per-symbol instead.
+- Yahoo Finance v8 chart `interval=1d` returns `CLOSED` marketState during market hours; use `interval=1m&range=1d`.
 - Don't use `cf: { cacheTtl }` on external fetches that may fail — caches the failure.
 - Service worker caches old JS/CSS; bump `CACHE` version string on every frontend deploy.
 - SW fetch handler must not call `respondWith` with a rejecting promise — causes ERR_FAILED on mobile.
