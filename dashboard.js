@@ -18,8 +18,10 @@ document.querySelectorAll('.modal-backdrop').forEach(el => {
   el.addEventListener('click', e => { if (e.target === el) el.classList.remove('open'); });
 });
 
-// ── Quick Add Task ──
-document.getElementById('brief-add-task-btn').addEventListener('click', () => openModal('task-modal'));
+// ── Quick Add Task (delegated — button is rendered dynamically in brief) ──
+document.addEventListener('click', e => {
+  if (e.target.closest('#brief-add-task-btn')) openModal('task-modal');
+});
 
 document.getElementById('task-save-btn').addEventListener('click', async () => {
   const title = document.getElementById('task-title').value.trim();
