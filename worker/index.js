@@ -709,7 +709,7 @@ async function briefFetchStocks(tickerStr) {
   const headers = { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36', 'Accept': 'application/json' };
   const results = await Promise.allSettled(
     symbols.map(sym =>
-      fetch(`https://query1.finance.yahoo.com/v8/finance/chart/${sym}?interval=1d&range=2d`, { headers })
+      fetch(`https://query1.finance.yahoo.com/v8/finance/chart/${sym}?interval=1m&range=1d`, { headers })
         .then(r => r.ok ? r.json() : null)
         .then(data => {
           const meta = data?.chart?.result?.[0]?.meta;
