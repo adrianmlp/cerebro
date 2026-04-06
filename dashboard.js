@@ -364,7 +364,7 @@ async function loadBrief() {
           const hasScore = g.homeScore !== '' && g.awayScore !== '';
           const aScore = hasScore ? parseInt(g.awayScore, 10) : -1;
           const hScore = hasScore ? parseInt(g.homeScore, 10) : -1;
-          const isScheduled = !hasScore && (g.status === 'Scheduled' || g.status === '');
+          const isScheduled = g.statusState === 'pre' || (!hasScore && (g.status === 'Scheduled' || g.status === ''));
           const statusStr = isScheduled
             ? briefFmtTime(g.date)
             : (g.status || (hasScore ? 'Final' : briefFmtTime(g.date)));

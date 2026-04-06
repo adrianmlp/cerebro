@@ -767,15 +767,18 @@ async function briefFetchSports(teamStr) {
           .flatMap(b => b.names || [])
           .filter((v, i, a) => a.indexOf(v) === i)
           .slice(0, 4);
+        // statusState: 'pre' = not started, 'in' = live, 'post' = final
+        const statusState = comp?.status?.type?.state || 'pre';
         return {
           league,
-          home:       home?.team?.displayName || '',
-          away:       away?.team?.displayName || '',
-          homeScore:  home?.score ?? '',
-          awayScore:  away?.score ?? '',
-          status:     comp?.status?.type?.description || '',
-          date:       ev.date || '',
-          link:       `https://www.espn.com/${sportPath}/game/_/gameId/${ev.id}`,
+          home:        home?.team?.displayName || '',
+          away:        away?.team?.displayName || '',
+          homeScore:   statusState !== 'pre' ? (home?.score ?? '') : '',
+          awayScore:   statusState !== 'pre' ? (away?.score ?? '') : '',
+          status:      comp?.status?.type?.description || '',
+          statusState,
+          date:        ev.date || '',
+          link:        `https://www.espn.com/${sportPath}/game/_/gameId/${ev.id}`,
           broadcasts,
         };
       }))
