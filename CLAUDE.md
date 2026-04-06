@@ -92,4 +92,5 @@ Brief grid: 4 stocks/row desktop → 2 mobile; 3 scores/row desktop → 1 mobile
 - SW `respondWith` must not reject — causes ERR_FAILED; clone response before async cache write.
 - Sports team filter: all words in user's term must appear in team name (not reverse).
 - Brief timezone: pass `?date=` from client; don't hardcode LA tz in worker.
+- Buttons rendered inside `innerHTML` don't exist at page load; use event delegation on `document`.
 - Branches diverge from main; always merge main before building new features.
