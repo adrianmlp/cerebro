@@ -387,9 +387,13 @@ async function loadBrief() {
           ${dueSec}
         </div>
         <div>
-          <div class="brief-section-label">📅 Today's Meetings</div>
+          <div class="brief-section-label">📅 Today's Schedule</div>
           ${meetSec}
         </div>
+      </div>
+      <div>
+        <div class="brief-section-label">📰 News</div>
+        ${newsSec}
       </div>
       <div>
         <div class="brief-section-label">📈 Stocks</div>
@@ -398,10 +402,6 @@ async function loadBrief() {
       <div>
         <div class="brief-section-label">🏆 Scores</div>
         ${sportSec}
-      </div>
-      <div>
-        <div class="brief-section-label">📰 News</div>
-        ${newsSec}
       </div>
     </div>`;
 

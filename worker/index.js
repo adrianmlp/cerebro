@@ -11,12 +11,36 @@ function json(data, status = 200) {
   });
 }
 
-function checkAuth(request, env) {
+// ── HMAC token helpers ──
+async function signToken(env, expiryDays = 30) {
+  const payload = btoa(JSON.stringify({ iat: Date.now(), exp: Date.now() + expiryDays * 86400000 }));
+  const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(env.APP_PASSWORD),
+    { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+  const sig = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(payload));
+  return `${payload}.${btoa(String.fromCharCode(...new Uint8Array(sig)))}`;
+}
+
+async function verifyToken(token, env) {
+  const [payload, sig] = token.split('.');
+  if (!payload || !sig) return false;
+  try {
+    const { exp } = JSON.parse(atob(payload));
+    if (exp < Date.now()) return false;
+    const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(env.APP_PASSWORD),
+      { name: 'HMAC', hash: 'SHA-256' }, false, ['verify']);
+    const sigBytes = Uint8Array.from(atob(sig), c => c.charCodeAt(0));
+    return await crypto.subtle.verify('HMAC', key, sigBytes, new TextEncoder().encode(payload));
+  } catch { return false; }
+}
+
+async function checkAuth(request, env) {
   const header = request.headers.get('Authorization') || '';
-  if (!header.startsWith('Basic ')) return false;
-  const decoded = atob(header.slice(6));
-  const [, pass] = decoded.split(':');
-  return pass === env.APP_PASSWORD;
+  if (header.startsWith('Bearer ')) return verifyToken(header.slice(7), env);
+  if (header.startsWith('Basic ')) {
+    const [, pass] = atob(header.slice(6)).split(':');
+    return pass === env.APP_PASSWORD;
+  }
+  return false;
 }
 
 // ── Migrations — run once per isolate lifetime, not on every request ──
@@ -849,7 +873,15 @@ async function handleRequest(request, env) {
 
     if (method === 'OPTIONS') return new Response(null, { headers: CORS });
 
-    if (path.startsWith('/api/') && !checkAuth(request, env)) {
+    // ── Login: exchange password for 30-day token ──
+    if (path === '/api/auth/token' && method === 'POST') {
+      const { password } = await request.json();
+      if (password !== env.APP_PASSWORD) return json({ error: 'Unauthorized' }, 401);
+      const token = await signToken(env);
+      return json({ token });
+    }
+
+    if (path.startsWith('/api/') && !await checkAuth(request, env)) {
       return new Response('Unauthorized', {
         status: 401,
         headers: { 'WWW-Authenticate': 'Basic realm="Cerebro"', ...CORS },
@@ -1093,7 +1125,7 @@ async function handleRequest(request, env) {
 
       // Debug: search outlook_events by title substring (auth required)
       if (seg[1] === 'outlook' && seg[2] === 'search' && method === 'GET') {
-        if (!checkAuth(request, env)) return json({ error: 'Unauthorized' }, 401);
+        if (!await checkAuth(request, env)) return json({ error: 'Unauthorized' }, 401);
         const q = url.searchParams.get('q') || '';
         const { results } = await env.DB.prepare(
           `SELECT uid, title, start_time, recurrence_rule, event_tzid, local_start FROM outlook_events WHERE LOWER(title) LIKE ? LIMIT 20`
@@ -1320,7 +1352,7 @@ Reply in 1-3 sentences. For create task/event return JSON: {"message":"...","act
 
       // Settings: GET / PUT
       if (seg[1] === 'brief' && seg[2] === 'settings') {
-        if (!checkAuth(request, env)) return json({ error: 'Unauthorized' }, 401);
+        if (!await checkAuth(request, env)) return json({ error: 'Unauthorized' }, 401);
         if (method === 'GET') {
           const [t, te, to] = await Promise.all([
             env.DB.prepare('SELECT value FROM settings WHERE key=?').bind('brief_tickers').first(),
@@ -1342,7 +1374,7 @@ Reply in 1-3 sentences. For create task/event return JSON: {"message":"...","act
 
       // ── Saves ──
       if (seg[1] === 'saves') {
-        if (!checkAuth(request, env)) return json({ error: 'Unauthorized' }, 401);
+        if (!await checkAuth(request, env)) return json({ error: 'Unauthorized' }, 401);
 
         if (!seg[2] && method === 'GET') {
           const tag    = url.searchParams.get('tag')    || '';
@@ -1396,7 +1428,7 @@ Reply in 1-3 sentences. For create task/event return JSON: {"message":"...","act
 
       // Main brief endpoint
       if (seg[1] === 'brief' && !seg[2] && method === 'GET') {
-        if (!checkAuth(request, env)) return json({ error: 'Unauthorized' }, 401);
+        if (!await checkAuth(request, env)) return json({ error: 'Unauthorized' }, 401);
 
         const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Los_Angeles' }).format(new Date());
 

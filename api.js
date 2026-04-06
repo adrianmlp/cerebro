@@ -1,17 +1,25 @@
 // ── Cerebro shared API helper ──
 const WORKER_URL = document.querySelector('meta[name="worker-url"]')?.content || '';
+const TOKEN_KEY  = 'cerebro_token';
 
-function getAuthHeader() {
-  const creds = sessionStorage.getItem('cerebro_creds');
-  return creds ? 'Basic ' + btoa('cerebro:' + creds) : null;
+function getToken() { return localStorage.getItem(TOKEN_KEY); }
+function getAuthHeader() { const t = getToken(); return t ? `Bearer ${t}` : null; }
+
+async function acquireToken(msg = 'Cerebro password:') {
+  const pass = prompt(msg);
+  if (!pass) throw new Error('No password provided');
+  const res = await fetch(WORKER_URL + '/api/auth/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ password: pass }),
+  });
+  if (!res.ok) return acquireToken('Wrong password. Try again:');
+  const { token } = await res.json();
+  localStorage.setItem(TOKEN_KEY, token);
 }
 
 export async function apiFetch(path, opts = {}) {
-  if (!getAuthHeader()) {
-    const pass = prompt('Cerebro password:');
-    if (!pass) throw new Error('No password provided');
-    sessionStorage.setItem('cerebro_creds', pass);
-  }
+  if (!getToken()) await acquireToken();
 
   const res = await fetch(WORKER_URL + path, {
     ...opts,
@@ -23,10 +31,8 @@ export async function apiFetch(path, opts = {}) {
   });
 
   if (res.status === 401) {
-    sessionStorage.removeItem('cerebro_creds');
-    const pass = prompt('Wrong password. Try again:');
-    if (!pass) throw new Error('No password provided');
-    sessionStorage.setItem('cerebro_creds', pass);
+    localStorage.removeItem(TOKEN_KEY);
+    await acquireToken('Session expired. Enter password:');
     return apiFetch(path, opts);
   }
 
