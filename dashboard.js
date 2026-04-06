@@ -341,6 +341,8 @@ async function loadBrief() {
     const stockSec = data.stocks?.length
       ? `<div class="brief-stocks">${data.stocks.map(s => {
           const up = (s.changePercent || 0) >= 0;
+          const stateMap = { REGULAR: ['Open','brief-stock-open'], PRE: ['Pre','brief-stock-pre'], POST: ['After','brief-stock-pre'], CLOSED: ['Closed','brief-stock-closed'] };
+          const [stateLabel, stateCls] = stateMap[s.marketState] || ['Closed','brief-stock-closed'];
           return `<a class="brief-stock" href="https://finance.yahoo.com/quote/${s.symbol}" target="_blank" rel="noopener">
             <div class="brief-stock-row1">
               <span class="brief-stock-symbol">${s.symbol}</span>
@@ -348,7 +350,7 @@ async function loadBrief() {
             </div>
             <div class="brief-stock-row2">
               <span class="brief-stock-change ${up?'up':'down'}">${briefFmtChange(s.changePercent)}</span>
-              ${s.marketOpen ? `<span class="brief-stock-open">Open</span>` : `<span class="brief-stock-closed">Closed</span>`}
+              <span class="${stateCls}">${stateLabel}</span>
             </div>
           </a>`;
         }).join('')}</div>`
@@ -362,6 +364,13 @@ async function loadBrief() {
           const hasScore = g.homeScore !== '' && g.awayScore !== '';
           const aScore = hasScore ? parseInt(g.awayScore, 10) : -1;
           const hScore = hasScore ? parseInt(g.homeScore, 10) : -1;
+          const isScheduled = !hasScore && (g.status === 'Scheduled' || g.status === '');
+          const statusStr = isScheduled
+            ? briefFmtTime(g.date)
+            : (g.status || (hasScore ? 'Final' : briefFmtTime(g.date)));
+          const broadcastHtml = (g.broadcasts?.length && isScheduled)
+            ? `<span class="brief-score-tv">${g.broadcasts.join(' · ')}</span>`
+            : '';
           const inner = `
             <div class="brief-score-matchup">
               <div class="brief-score-row">
@@ -374,7 +383,8 @@ async function loadBrief() {
               </div>
             </div>
             <div class="brief-score-footer">
-              <span class="brief-score-status">${g.status || (hasScore ? 'Final' : briefFmtTime(g.date))}</span>
+              <span class="brief-score-status">${statusStr}</span>
+              ${broadcastHtml}
               <span class="brief-score-badge">${g.league.toUpperCase()}</span>
             </div>`;
           return g.link

@@ -1834,7 +1834,8 @@ body {
 .brief-stock-change.up   { color: var(--green); }
 .brief-stock-change.down { color: var(--red); }
 .brief-stock-closed { font-size: 10px; color: var(--text-3); }
-.brief-stock-open   { font-size: 10px; color: var(--green); opacity: 0.7; }
+.brief-stock-open   { font-size: 10px; color: var(--green); opacity: 0.8; }
+.brief-stock-pre    { font-size: 10px; color: var(--indigo); opacity: 0.8; }
 
 /* Sports */
 .brief-sports {
@@ -1867,6 +1868,7 @@ body {
 .brief-score-vs   { font-size: 11px; color: var(--text-3); font-weight: 400; }
 .brief-score-footer { display: flex; align-items: center; gap: 8px; padding-top: 5px; border-top: 1px solid var(--border); }
 .brief-score-status { font-size: 11px; color: var(--text-3); flex: 1; }
+.brief-score-tv     { font-size: 10px; color: var(--indigo); opacity: 0.85; white-space: nowrap; }
 .brief-score-badge  { font-size: 10px; color: var(--text-3); opacity: 0.7; }
 
 /* News */

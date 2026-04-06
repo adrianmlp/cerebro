@@ -709,22 +709,25 @@ async function briefFetchStocks(tickerStr) {
   const headers = { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36', 'Accept': 'application/json' };
   const results = await Promise.allSettled(
     symbols.map(sym =>
-      fetch(`https://query1.finance.yahoo.com/v8/finance/chart/${sym}?interval=1d&range=2d`, { headers, cf: { cacheTtl: 300 } })
+      fetch(`https://query1.finance.yahoo.com/v8/finance/chart/${sym}?interval=1d&range=2d`, { headers })
         .then(r => r.ok ? r.json() : null)
         .then(data => {
           const meta = data?.chart?.result?.[0]?.meta;
           if (!meta) return null;
-          const price = meta.regularMarketPrice || meta.previousClose || 0;
-          const prevClose = meta.chartPreviousClose || meta.previousClose || price;
-          const change = price - prevClose;
-          const changePercent = prevClose ? (change / prevClose) * 100 : 0;
+          const price         = meta.regularMarketPrice || meta.previousClose || 0;
+          const prevClose     = meta.chartPreviousClose || meta.previousClose || price;
+          const change        = price - prevClose;
+          // Prefer Yahoo's official changePercent; fall back to manual calc
+          const changePercent = meta.regularMarketChangePercent != null
+            ? meta.regularMarketChangePercent
+            : (prevClose ? (change / prevClose) * 100 : 0);
           return {
-            symbol:        sym,
-            name:          meta.longName || meta.shortName || sym,
+            symbol:      sym,
+            name:        meta.longName || meta.shortName || sym,
             price,
             change,
             changePercent,
-            marketOpen:    meta.marketState === 'REGULAR',
+            marketState: meta.marketState || 'CLOSED',   // REGULAR | PRE | POST | CLOSED
           };
         })
     )
@@ -760,15 +763,20 @@ async function briefFetchSports(teamStr) {
         const home = comp?.competitors?.find(c => c.homeAway === 'home');
         const away = comp?.competitors?.find(c => c.homeAway === 'away');
         const sportPath = ESPN_PATH[league] || league;
+        const broadcasts = (comp?.broadcasts || [])
+          .flatMap(b => b.names || [])
+          .filter((v, i, a) => a.indexOf(v) === i)
+          .slice(0, 4);
         return {
           league,
-          home:      home?.team?.displayName || '',
-          away:      away?.team?.displayName || '',
-          homeScore: home?.score ?? '',
-          awayScore: away?.score ?? '',
-          status:    comp?.status?.type?.description || '',
-          date:      ev.date || '',
-          link:      `https://www.espn.com/${sportPath}/game/_/gameId/${ev.id}`,
+          home:       home?.team?.displayName || '',
+          away:       away?.team?.displayName || '',
+          homeScore:  home?.score ?? '',
+          awayScore:  away?.score ?? '',
+          status:     comp?.status?.type?.description || '',
+          date:       ev.date || '',
+          link:       `https://www.espn.com/${sportPath}/game/_/gameId/${ev.id}`,
+          broadcasts,
         };
       }))
     )
