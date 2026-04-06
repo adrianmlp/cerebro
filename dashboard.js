@@ -459,32 +459,6 @@ async function loadBrief() {
   }
 }
 
-// Brief settings
-document.getElementById('brief-settings-btn').addEventListener('click', async () => {
-  try {
-    const s = await apiFetch('/api/brief/settings');
-    document.getElementById('brief-tickers-input').value = s.tickers || '';
-    document.getElementById('brief-teams-input').value   = s.teams   || '';
-    document.getElementById('brief-topics-input').value  = s.topics  || '';
-  } catch { /* prefill blank */ }
-  openModal('brief-settings-modal');
-});
-
-document.getElementById('brief-settings-save').addEventListener('click', async () => {
-  try {
-    await apiFetch('/api/brief/settings', {
-      method: 'PUT',
-      body: JSON.stringify({
-        tickers: document.getElementById('brief-tickers-input').value.trim(),
-        teams:   document.getElementById('brief-teams-input').value.trim(),
-        topics:  document.getElementById('brief-topics-input').value.trim(),
-      }),
-    });
-    closeModal('brief-settings-modal');
-    toast('Settings saved', 'success');
-    loadBrief();
-  } catch (e) { toast(e.message, 'error'); }
-});
 
 document.getElementById('brief-refresh-btn').addEventListener('click', () => {
   document.getElementById('brief-subtitle').textContent = 'Refreshing…';
