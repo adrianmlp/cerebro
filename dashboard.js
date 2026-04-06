@@ -8,10 +8,6 @@ document.getElementById('tasks-chip-toggle').addEventListener('click', e => {
   if (e.target.closest('button, a')) return;
   document.getElementById('tasks-chip').classList.toggle('open');
 });
-document.getElementById('schedule-chip-toggle').addEventListener('click', e => {
-  if (e.target.closest('button, a')) return;
-  document.getElementById('schedule-chip').classList.toggle('open');
-});
 
 // ── Helpers ──
 function closeModal(id) {
@@ -403,7 +399,7 @@ async function loadBrief() {
           ${dueSec}
         </div>
         <div>
-          <div class="brief-section-label">📅 Today's Schedule</div>
+          <a class="brief-section-label brief-section-link" href="calendar.html?view=day&date=${localDateStr()}">📅 Today's Schedule ↗</a>
           ${meetSec}
         </div>
       </div>

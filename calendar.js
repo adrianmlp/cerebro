@@ -4,9 +4,11 @@ import { initNav } from './nav.js';
 initNav('calendar');
 
 // ── State ──
-let calView        = 'month';
+const _params      = new URLSearchParams(location.search);
+let calView        = _params.get('view') || 'month';
 let cursor         = new Date();
-cursor.setDate(1);
+const _dateParam   = _params.get('date');
+if (_dateParam) { cursor = new Date(_dateParam + 'T12:00:00'); } else { cursor.setDate(1); }
 let events         = [];          // personal (Cerebro) events
 let outlookEvents  = [];          // work (Outlook) events
 let selectedColor  = EVENT_COLORS[0];

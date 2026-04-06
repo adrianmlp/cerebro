@@ -1732,6 +1732,12 @@ body {
   .brief-top-row { grid-template-columns: 1fr; }
 }
 
+.brief-section-link {
+  text-decoration: none;
+  display: inline-block;
+}
+.brief-section-link:hover { color: var(--indigo); }
+
 .brief-section-label {
   font-size: 10px;
   font-weight: 700;
