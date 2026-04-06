@@ -1452,13 +1452,14 @@ Reply in 1-3 sentences. For create task/event return JSON: {"message":"...","act
         const meetings   = [...personalEv, ...workEv].sort((a,b)=>(a.start_time||'').localeCompare(b.start_time||''));
 
         // Fetch external data in parallel
-        const [stocks, sports, news] = await Promise.all([
+        const [stocks, sports, news, sportsNews] = await Promise.all([
           briefFetchStocks(tickerRow?.value || ''),
           briefFetchSports(teamRow?.value   || ''),
           briefFetchNews(topicRow?.value    || ''),
+          briefFetchNews(teamRow?.value     || ''),
         ]);
 
-        return json({ dueToday: dueTasks, meetings, stocks, sports, news, settings: { tickers: tickerRow?.value||'', teams: teamRow?.value||'', topics: topicRow?.value||'' } });
+        return json({ dueToday: dueTasks, meetings, stocks, sports, news, sportsNews, settings: { tickers: tickerRow?.value||'', teams: teamRow?.value||'', topics: topicRow?.value||'' } });
       }
 
       return json({ error: 'Not found' }, 404);

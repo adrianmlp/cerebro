@@ -342,10 +342,14 @@ async function loadBrief() {
       ? `<div class="brief-stocks">${data.stocks.map(s => {
           const up = (s.changePercent || 0) >= 0;
           return `<a class="brief-stock" href="https://finance.yahoo.com/quote/${s.symbol}" target="_blank" rel="noopener">
-            <span class="brief-stock-symbol">${s.symbol}</span>
-            <span class="brief-stock-price">$${(s.price||0).toFixed(2)}</span>
-            <span class="brief-stock-change ${up?'up':'down'}">${briefFmtChange(s.changePercent)}</span>
-            ${!s.marketOpen ? `<span class="brief-stock-closed">Closed</span>` : ''}
+            <div class="brief-stock-row1">
+              <span class="brief-stock-symbol">${s.symbol}</span>
+              <span class="brief-stock-price">$${(s.price||0).toFixed(2)}</span>
+            </div>
+            <div class="brief-stock-row2">
+              <span class="brief-stock-change ${up?'up':'down'}">${briefFmtChange(s.changePercent)}</span>
+              ${s.marketOpen ? `<span class="brief-stock-open">Open</span>` : `<span class="brief-stock-closed">Closed</span>`}
+            </div>
           </a>`;
         }).join('')}</div>`
       : data.settings?.tickers
@@ -356,19 +360,43 @@ async function loadBrief() {
     const sportSec = data.sports?.length
       ? `<div class="brief-sports">${data.sports.map(g => {
           const hasScore = g.homeScore !== '' && g.awayScore !== '';
+          const aScore = hasScore ? parseInt(g.awayScore, 10) : -1;
+          const hScore = hasScore ? parseInt(g.homeScore, 10) : -1;
           const inner = `
-            <div class="brief-score-teams">
-              <span>${g.away}</span>
-              ${hasScore ? `<span class="brief-score-nums">${g.awayScore}–${g.homeScore}</span>` : '<span class="brief-score-vs">@</span>'}
-              <span>${g.home}</span>
+            <div class="brief-score-matchup">
+              <div class="brief-score-row">
+                <span class="brief-score-team${hasScore && aScore > hScore ? ' winner' : ''}">${g.away}</span>
+                ${hasScore ? `<span class="brief-score-num${aScore > hScore ? ' winner' : ''}">${g.awayScore}</span>` : ''}
+              </div>
+              <div class="brief-score-row">
+                <span class="brief-score-team${hasScore && hScore > aScore ? ' winner' : ''}">${g.home}</span>
+                ${hasScore ? `<span class="brief-score-num${hScore > aScore ? ' winner' : ''}">${g.homeScore}</span>` : '<span class="brief-score-vs">vs</span>'}
+              </div>
             </div>
-            <div class="brief-score-status">${g.status || (hasScore ? '' : briefFmtTime(g.date))}</div>
-            <span class="brief-score-badge">${g.league.toUpperCase()}</span>`;
+            <div class="brief-score-footer">
+              <span class="brief-score-status">${g.status || (hasScore ? 'Final' : briefFmtTime(g.date))}</span>
+              <span class="brief-score-badge">${g.league.toUpperCase()}</span>
+            </div>`;
           return g.link
             ? `<a class="brief-score" href="${g.link}" target="_blank" rel="noopener">${inner}</a>`
             : `<div class="brief-score">${inner}</div>`;
         }).join('')}</div>`
       : `<div class="brief-empty">No teams configured — click ⚙ Settings to add some</div>`;
+
+    // Sports news
+    const sportsNewsSec = data.sportsNews?.length
+      ? `<div class="brief-news">${data.sportsNews.map(n => `
+          <div class="brief-news-item">
+            <div class="brief-news-bullet">•</div>
+            <div class="brief-news-content">
+              <a class="brief-news-title" href="${n.link}" target="_blank" rel="noopener">${n.title}</a>
+              <div class="brief-news-meta">
+                ${n.topic ? `<span class="brief-news-topic">${n.topic}</span>` : ''}
+                ${n.source || ''}
+              </div>
+            </div>
+          </div>`).join('')}</div>`
+      : '';
 
     // News
     const newsSec = data.news?.length
@@ -409,6 +437,7 @@ async function loadBrief() {
       <div>
         <div class="brief-section-label">🏆 Scores</div>
         ${sportSec}
+        ${sportsNewsSec ? `<div class="brief-section-label" style="margin-top:12px">📰 Sports News</div>${sportsNewsSec}` : ''}
       </div>
     </div>`;
 
