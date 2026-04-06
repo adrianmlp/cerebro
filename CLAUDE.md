@@ -3,25 +3,27 @@
 Personal productivity dashboard. Cloudflare Pages (frontend) + Worker (API) + D1 (SQLite) + Workers AI.
 
 ## Stack
-- **Frontend:** Vanilla HTML/CSS/JS, no build step. Deploy: push to GitHub → auto-deploys Pages.
-- **Worker:** `worker/index.js`. Deploy: `npx wrangler deploy`
-- **DB:** Cloudflare D1, binding `DB`, SQLite
-- **AI:** Cloudflare Workers AI, binding `AI`, model `@cf/meta/llama-3.1-8b-instruct`
-- **Auth:** HMAC-signed 30-day tokens stored in `localStorage`. `POST /api/auth/token` exchanges password for token. Worker accepts `Bearer <token>` or `Basic` header. Changing `APP_PASSWORD` invalidates all tokens.
-- **PWA:** `manifest.json` + `sw.js` (network-first for HTML, cache-first for static assets). Android share target points to `save.html`.
+- **Frontend:** Vanilla HTML/CSS/JS, no build step. Push to GitHub → auto-deploys Pages.
+- **Worker:** `worker/index.js` → `npx wrangler deploy`
+- **DB:** Cloudflare D1, binding `DB` (SQLite). **Never use `wrangler d1 execute`** — add migrations as `try/catch ALTER TABLE` at top of `fetch()`.
+- **AI:** Workers AI, binding `AI`, model `@cf/meta/llama-3.1-8b-instruct`
+- **Auth:** HMAC-signed 30-day tokens in `localStorage`. `POST /api/auth/token` exchanges password. `APP_PASSWORD` change invalidates all tokens.
+- **PWA:** `manifest.json` + `sw.js`. Cache key `cerebro-vN` — **bump N on every JS/CSS deploy**. HTML = network-first; static assets = cache-first. Android share target → `save.html`.
 
 ## Pages
-- `index.html` + `dashboard.js` — Dashboard (Tasks Today, Schedule, Daily Brief, AI Chat)
-- `tasks.html` + `tasks.js` — Tasks CRUD
-- `calendar.html` + `calendar.js` — Calendar + Outlook ICS sync
-- `notes.html` + `notes.js` — Notes (split-panel: list left, editor right)
-- `saves.html` + `saves.js` — Save for Later (bookmarks grid with filters)
-- `save.html` — PWA share target; receives shared URL from Android share sheet
-- `api.js` — Shared `apiFetch()` + localStorage token auth
-- `nav.js` — Nav bar + hamburger toggle
-- `style.css` — Dark theme, design tokens
-- `sw.js` — Service worker (cache `cerebro-v3`)
-- `manifest.json` — PWA manifest with share_target + shortcuts
+| File | Purpose |
+|------|---------|
+| `index.html` + `dashboard.js` | Dashboard: collapsible tasks chip, Daily Brief, floating chat bar (starts collapsed) |
+| `tasks.html` + `tasks.js` | Tasks CRUD |
+| `calendar.html` + `calendar.js` | Calendar + Outlook ICS. Deep-link: `?view=day&date=YYYY-MM-DD` |
+| `notes.html` + `notes.js` | Notes (split-panel) |
+| `saves.html` + `saves.js` | Bookmarks grid |
+| `save.html` | PWA share target |
+| `settings.html` + `settings.js` | Settings page: tag-input UI for brief tickers/teams/topics |
+| `api.js` | `apiFetch()`, `toast()`, date/priority helpers |
+| `nav.js` | Nav + hamburger |
+| `style.css` | Deep Ocean dark theme, design tokens |
+| `sw.js` | Service worker (currently `cerebro-v11`) |
 
 ## DB Schema
 ```sql
@@ -35,23 +37,14 @@ saves(id, url, title, description, thumbnail, type[article|video|link], tags, is
 ```
 
 ## Settings Keys
-- `brief_tickers` — comma-separated stock symbols
-- `brief_teams` — comma-separated sports teams
-- `brief_topics` — comma-separated news topics
-- `outlook_last_sync` — ISO timestamp
+`brief_tickers`, `brief_teams`, `brief_topics` — comma-separated. `outlook_last_sync` — ISO timestamp.
 
 ## Worker Secrets
-- `APP_PASSWORD` — login password
-- `OUTLOOK_ICS_URL` (+ `_2` through `_10`) — Outlook ICS feed URLs
+`APP_PASSWORD`. `OUTLOOK_ICS_URL` (+ `_2`–`_10`) — Outlook ICS feeds.
 
-## Key Patterns
-
-### D1 Migrations
-**Never use `wrangler d1 execute`.** Add migrations as `try/catch` `ALTER TABLE` statements at the top of the Worker `fetch()` handler.
-
-### API Routes
+## API Routes
 ```
-POST            /api/auth/token             — no auth; exchanges password for 30-day token
+POST            /api/auth/token
 GET/POST        /api/tasks
 PATCH           /api/tasks/:id
 GET/POST        /api/events
@@ -64,41 +57,39 @@ POST            /api/sync/outlook
 GET             /api/sync/status
 GET/POST/PATCH  /api/notes[/:id]
 POST            /api/chat
-GET             /api/brief
+GET             /api/brief?date=YYYY-MM-DD
 GET/PUT         /api/brief/settings
 GET/POST        /api/saves
 PATCH/DELETE    /api/saves/:id
 ```
 
-### Daily Brief
-`GET /api/brief` fetches in parallel: Yahoo Finance v8 chart API (stocks), ESPN API (sports), Bing News RSS w/ Google fallback (news), D1 (due tasks + today's meetings).
-Order: Due Today → Today's Schedule → News → Stocks → Sports.
+## Daily Brief
+`GET /api/brief?date=YYYY-MM-DD` — client passes local date to avoid timezone issues. Fetches in parallel:
+- **Stocks:** Yahoo Finance v8 `interval=1m&range=1d` per symbol. Returns `price`, `changePercent` (official `regularMarketChangePercent`), `marketState` (REGULAR/PRE/POST/CLOSED).
+- **Sports:** ESPN scoreboard API. Returns `home/away`, scores (blank when `statusState=pre`), `status`, `statusState` (pre/in/post), `date`, `broadcasts[]`.
+- **News:** Bing RSS (Google fallback) for `brief_topics`. Also fetches `sportsNews` using `brief_teams` as topics.
+- **D1:** due tasks + today's meetings (personal + Outlook).
 
-### Saves / Metadata
-`POST /api/saves` calls `fetchSaveMeta(url)` server-side: YouTube URLs use oEmbed, all others extract Open Graph tags. Auto-detects type (video/article/link).
+Response: `{ dueToday, meetings, stocks, sports, news, sportsNews, settings }`.
 
-### Recurring Events
-- Personal: `recurrence_type` field, instances generated on-demand
-- Outlook: RRULE parsed from ICS, DST-correct via stored `local_start` + IANA tz
+Brief grid: 4 stocks/row desktop → 2 mobile; 3 scores/row desktop → 1 mobile.
 
-### Outlook Sync
-Cron: `0 */6 * * *`. Parses ICS from `OUTLOOK_ICS_URL` secrets, stores base events in `outlook_events`, generates instances at query time.
-
-### AI Chat
-Two modes: `chat` (conversational, can create tasks/events) and `transcript` (extract tasks/events from meeting notes). Context includes recent tasks, events, notes injected into system prompt.
-
-### Service Worker
-Cache key is `cerebro-vN`. **Bump N whenever deploying JS/CSS changes** to force clients to pick up the new files. HTML pages are network-first so they always load fresh; only static assets are cache-first.
+## Other Patterns
+- **Saves:** `POST /api/saves` → `fetchSaveMeta()` server-side (YouTube oEmbed, else Open Graph). Auto-detects type.
+- **Recurring events:** Personal = `recurrence_type` field, on-demand generation. Outlook = RRULE from ICS, DST-safe via `local_start` + IANA tz.
+- **Outlook sync:** Cron `0 */6 * * *`. ICS → `outlook_events` → instances at query time.
+- **AI Chat:** `chat` mode (create tasks/events) + `transcript` mode (extract from meeting notes). Tasks/events/notes injected into system prompt.
+- **Settings page:** Tag-input UI (type + Enter to add, × to remove). Saves comma-separated to `brief_tickers/teams/topics` via `PUT /api/brief/settings`.
+- **Cherry-pick workflow:** Feature branch `claude/thirsty-poitras` → cherry-pick commits to `main` for Pages deploy.
 
 ## Applied Learning
-When something fails repeatedly, when Adrian has to re-explain, or when a workaround is found for a platform/tool limitation, add a one-line bullet here. Keep each bullet under 15 words. No explanations. Only add things that will save time in future sessions.
-
-- Google News RSS blocks Cloudflare Worker IPs on some edge regions; use Bing RSS instead.
-- Yahoo Finance v7 `/quote` requires crumb/cookie; use v8 `/chart/{symbol}` per-symbol instead.
-- Yahoo Finance v8 chart `interval=1d` returns `CLOSED` marketState during market hours; use `interval=1m&range=1d`.
-- Don't use `cf: { cacheTtl }` on external fetches that may fail — caches the failure.
-- Service worker caches old JS/CSS; bump `CACHE` version string on every frontend deploy.
-- SW fetch handler must not call `respondWith` with a rejecting promise — causes ERR_FAILED on mobile.
-- Sports team filter: check all words in user's search appear in team name (not reverse).
-- `checkAuth` is now async; always `await` it at every call site.
-- Branches diverge from main; merge main before building features to avoid reverting fixes.
+- Google News RSS blocks CF Worker IPs; use Bing RSS with Google fallback.
+- Yahoo Finance v7 `/quote` needs crumb/cookie; use v8 `/chart/{symbol}`.
+- Yahoo Finance v8 `interval=1d` returns `CLOSED` marketState during hours; use `interval=1m&range=1d`.
+- ESPN returns score `"0"` for pre-game; use `statusState` (pre/in/post) to detect unstarted games.
+- Don't use `cf: { cacheTtl }` on external fetches — caches failures; also causes stale market state.
+- Bump SW `CACHE` version on every frontend JS/CSS deploy.
+- SW `respondWith` must not reject — causes ERR_FAILED; clone response before async cache write.
+- Sports team filter: all words in user's term must appear in team name (not reverse).
+- Brief timezone: pass `?date=` from client; don't hardcode LA tz in worker.
+- Branches diverge from main; always merge main before building new features.
