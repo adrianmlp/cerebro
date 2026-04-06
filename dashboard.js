@@ -306,7 +306,7 @@ async function loadBrief() {
   const body = document.getElementById('brief-body');
   const subtitle = document.getElementById('brief-subtitle');
   try {
-    const data = await apiFetch('/api/brief');
+    const data = await apiFetch(`/api/brief?date=${localDateStr()}`);
 
     // Sections: due today
     const dueSec = data.dueToday?.length

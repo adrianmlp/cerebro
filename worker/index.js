@@ -1430,7 +1430,7 @@ Reply in 1-3 sentences. For create task/event return JSON: {"message":"...","act
       if (seg[1] === 'brief' && !seg[2] && method === 'GET') {
         if (!await checkAuth(request, env)) return json({ error: 'Unauthorized' }, 401);
 
-        const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Los_Angeles' }).format(new Date());
+        const today = url.searchParams.get('date') || new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Los_Angeles' }).format(new Date());
 
         // Load settings + D1 data in parallel
         const [tickerRow, teamRow, topicRow, { results: dueTasks }, personalEvRes, outlookEvRes] = await Promise.all([
