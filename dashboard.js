@@ -130,11 +130,6 @@ document.getElementById('task-save-btn').addEventListener('click', async () => {
   } catch (e) { toast(e.message, 'error'); }
 });
 
-// ── Quick Add Event ──
-document.getElementById('schedule-add-btn').addEventListener('click', () => {
-  document.getElementById('event-date').value = localDateStr();
-  openModal('event-modal');
-});
 
 document.getElementById('event-save-btn').addEventListener('click', async () => {
   const title = document.getElementById('event-title').value.trim();
