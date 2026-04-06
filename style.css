@@ -1735,8 +1735,14 @@ body {
 .brief-section-link {
   text-decoration: none;
   display: inline-block;
+  color: inherit;
+}
+.brief-section-block {
+  display: block;
+  color: inherit;
 }
 .brief-section-link:hover { color: var(--indigo); }
+.brief-section-block:hover .brief-section-label { color: var(--indigo); }
 
 .brief-section-label {
   font-size: 10px;

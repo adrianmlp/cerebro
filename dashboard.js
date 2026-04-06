@@ -393,10 +393,10 @@ async function loadBrief() {
           <div class="brief-section-label">📌 Due Today</div>
           ${dueSec}
         </div>
-        <div>
-          <a class="brief-section-label brief-section-link" href="calendar.html?view=day&date=${localDateStr()}">📅 Today's Schedule ↗</a>
+        <a class="brief-section-link brief-section-block" href="calendar.html?view=day&date=${localDateStr()}">
+          <div class="brief-section-label">📅 Today's Schedule ↗</div>
           ${meetSec}
-        </div>
+        </a>
       </div>
       <div>
         <div class="brief-section-label">📰 News</div>
