@@ -3,6 +3,16 @@ import { initNav } from './nav.js';
 
 initNav('dashboard');
 
+// ── Chip collapse/expand ──
+document.getElementById('tasks-chip-toggle').addEventListener('click', e => {
+  if (e.target.closest('button, a')) return;
+  document.getElementById('tasks-chip').classList.toggle('open');
+});
+document.getElementById('schedule-chip-toggle').addEventListener('click', e => {
+  if (e.target.closest('button, a')) return;
+  document.getElementById('schedule-chip').classList.toggle('open');
+});
+
 // ── Helpers ──
 function closeModal(id) {
   document.getElementById(id).classList.remove('open');
@@ -263,7 +273,7 @@ chatInput.addEventListener('keydown', e => {
 });
 
 // ── Chat expand / collapse ──
-const chatCard          = document.getElementById('chat-card');
+const chatBarBody       = document.getElementById('chat-bar-body');
 const chatContent       = document.getElementById('chat-content');
 const chatFullscreen    = document.getElementById('chat-fullscreen-modal');
 const chatFullscreenBody = document.getElementById('chat-fullscreen-body');
@@ -276,10 +286,16 @@ function expandChat() {
 }
 
 function collapseChat() {
-  chatCard.appendChild(chatContent);
+  chatBarBody.appendChild(chatContent);
   chatFullscreen.classList.remove('open');
   chatMessages.scrollTop = chatMessages.scrollHeight;
 }
+
+// ── Chat bar header toggles collapsed state ──
+document.getElementById('chat-bar-header').addEventListener('click', e => {
+  if (e.target.closest('button')) return;
+  document.getElementById('chat-bar').classList.toggle('collapsed');
+});
 
 document.getElementById('chat-expand-btn').addEventListener('click', expandChat);
 document.getElementById('chat-collapse-btn').addEventListener('click', collapseChat);

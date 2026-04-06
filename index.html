@@ -8,7 +8,7 @@
   <link rel="stylesheet" href="style.css" />
   <link rel="manifest" href="manifest.json" />
 </head>
-<body>
+<body class="dashboard-page">
 
 <!-- ── Top Nav ── -->
 <nav id="app-nav">
@@ -27,23 +27,24 @@
 <!-- ── Main ── -->
 <main class="page-content">
 
-  <!-- Top row: tasks + schedule -->
-  <div class="dashboard-top">
+  <!-- Collapsed chips: Tasks + Schedule -->
+  <div class="chip-row">
 
-    <!-- Tasks card -->
-    <div class="card" id="todo-card">
-      <div class="card-header">
+    <!-- Tasks chip -->
+    <div class="chip-card" id="tasks-chip">
+      <div class="chip-header" id="tasks-chip-toggle">
         <div class="card-icon indigo">☑</div>
         <div>
-          <div class="card-title">Tasks</div>
-          <div class="card-subtitle" id="todo-subtitle">Loading…</div>
+          <div class="chip-label">Tasks</div>
+          <div class="chip-meta" id="todo-subtitle">Loading…</div>
         </div>
         <div class="card-actions">
           <button class="btn btn-ghost btn-sm" id="todo-add-btn">+ Add</button>
           <a href="tasks.html" class="btn btn-ghost btn-sm">View All ↗</a>
         </div>
+        <span class="chip-expand">▾</span>
       </div>
-      <div class="card-body">
+      <div class="chip-body">
         <div class="progress-wrap" id="todo-progress-wrap">
           <div class="progress-bar-track"><div class="progress-bar-fill" id="todo-progress" style="width:0%"></div></div>
           <span class="progress-label" id="todo-pct">0%</span>
@@ -52,20 +53,21 @@
       </div>
     </div>
 
-    <!-- Today's Schedule card -->
-    <div class="card" id="schedule-card">
-      <div class="card-header">
+    <!-- Schedule chip -->
+    <div class="chip-card" id="schedule-chip">
+      <div class="chip-header" id="schedule-chip-toggle">
         <div class="card-icon violet">📅</div>
         <div>
-          <div class="card-title">Today's Schedule</div>
-          <div class="card-subtitle" id="schedule-subtitle">Loading…</div>
+          <div class="chip-label">Today's Schedule</div>
+          <div class="chip-meta" id="schedule-subtitle">Loading…</div>
         </div>
         <div class="card-actions">
           <button class="btn btn-ghost btn-sm" id="schedule-add-btn">+ Add</button>
           <a href="calendar.html" class="btn btn-ghost btn-sm">View All ↗</a>
         </div>
+        <span class="chip-expand">▾</span>
       </div>
-      <div class="card-body" id="schedule-list"></div>
+      <div class="chip-body" id="schedule-list"></div>
     </div>
 
   </div>
@@ -73,7 +75,7 @@
   <!-- Daily Brief card -->
   <div class="card" id="brief-card">
     <div class="card-header">
-      <div class="card-icon amber">📋</div>
+      <div class="card-icon indigo">📋</div>
       <div>
         <div class="card-title">Daily Brief</div>
         <div class="card-subtitle" id="brief-subtitle">Loading…</div>
@@ -85,40 +87,6 @@
     </div>
     <div class="card-body" id="brief-body">
       <div class="brief-loading">Loading brief…</div>
-    </div>
-  </div>
-
-  <!-- AI Chat card -->
-  <div class="card" id="chat-card">
-    <div class="card-header">
-      <div class="card-icon indigo">✦</div>
-      <div>
-        <div class="card-title">Cerebro Chat</div>
-        <div class="card-subtitle">Ask about your tasks, calendar, notes — or paste a meeting transcript</div>
-      </div>
-      <div class="card-actions">
-        <button class="btn btn-ghost btn-sm" id="chat-expand-btn" title="Expand chat">⤢</button>
-      </div>
-    </div>
-    <!-- #chat-content is moved into the fullscreen modal on expand and back on collapse -->
-    <div id="chat-content" class="card-body">
-      <div class="chat-messages" id="chat-messages">
-        <div class="chat-msg assistant">
-          <div class="chat-avatar">✦</div>
-          <div class="chat-bubble">Hi! I'm Cerebro. Ask me about your tasks, calendar, or notes — or paste a meeting transcript and I'll extract action items for you.</div>
-        </div>
-      </div>
-
-      <!-- Transcript confirmation area -->
-      <div id="transcript-area" style="display:none">
-        <div id="transcript-summary" style="font-size:13px;color:var(--text-2);margin-bottom:12px;padding:12px;background:rgba(255,255,255,0.03);border-radius:var(--r-btn);border:1px solid var(--border)"></div>
-        <div id="transcript-cards" class="transcript-cards"></div>
-      </div>
-
-      <div class="chat-input-row">
-        <textarea class="textarea" id="chat-input" placeholder="Ask anything or paste a meeting transcript…" rows="1"></textarea>
-        <button class="btn btn-primary" id="chat-send-btn">Send</button>
-      </div>
     </div>
   </div>
 
@@ -139,6 +107,42 @@
   </div>
 
 </main>
+
+<!-- ── Floating Chat Bar ── -->
+<div class="chat-float" id="chat-float">
+  <div class="chat-float-inner">
+    <div class="chat-bar" id="chat-bar">
+      <div class="chat-bar-header" id="chat-bar-header">
+        <div class="chat-bar-avatar">✦</div>
+        <span class="chat-bar-title">Cerebro Chat</span>
+        <span class="chat-bar-hint">· Ask about tasks, calendar, notes — or paste a transcript</span>
+        <div class="chat-bar-controls">
+          <button class="btn-icon" id="chat-expand-btn" title="Expand">⤢</button>
+        </div>
+      </div>
+      <div class="chat-bar-body" id="chat-bar-body">
+        <div id="chat-content">
+          <div class="chat-messages" id="chat-messages">
+            <div class="chat-msg assistant">
+              <div class="chat-avatar">✦</div>
+              <div class="chat-bubble">Hi! I'm Cerebro. Ask me about your tasks, calendar, or notes — or paste a meeting transcript and I'll extract action items for you.</div>
+            </div>
+          </div>
+
+          <div id="transcript-area" style="display:none">
+            <div id="transcript-summary" style="font-size:13px;color:var(--text-2);margin-bottom:12px;padding:12px;background:rgba(255,255,255,0.03);border-radius:var(--r-btn);border:1px solid var(--border)"></div>
+            <div id="transcript-cards" class="transcript-cards"></div>
+          </div>
+
+          <div class="chat-input-row">
+            <textarea class="textarea" id="chat-input" placeholder="Ask anything or paste a meeting transcript…" rows="1"></textarea>
+            <button class="btn btn-primary" id="chat-send-btn">Send</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
 
 <!-- ── Daily Brief Settings Modal ── -->
 <div class="modal-backdrop" id="brief-settings-modal">
