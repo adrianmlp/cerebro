@@ -1,5 +1,5 @@
 // ── Cerebro shared nav ──
-// Call initNav('dashboard'|'tasks'|'calendar'|'notes') once per page
+// Call initNav('dashboard'|'tasks'|'calendar'|'notes'|'saves') once per page
 
 export function initNav(activePage) {
   // Update date
@@ -18,4 +18,19 @@ export function initNav(activePage) {
   document.querySelectorAll('#mobile-bottom-nav a').forEach(a => {
     a.classList.toggle('active', a.dataset.page === activePage);
   });
+
+  // Hamburger toggle
+  const menuBtn = document.getElementById('mobile-menu-btn');
+  const nav     = document.getElementById('app-nav');
+  if (menuBtn && nav) {
+    menuBtn.addEventListener('click', () => nav.classList.toggle('nav-open'));
+    // Close when a link is tapped
+    nav.querySelectorAll('.nav-links a').forEach(a => {
+      a.addEventListener('click', () => nav.classList.remove('nav-open'));
+    });
+    // Close when tapping outside
+    document.addEventListener('click', e => {
+      if (!nav.contains(e.target)) nav.classList.remove('nav-open');
+    });
+  }
 }
