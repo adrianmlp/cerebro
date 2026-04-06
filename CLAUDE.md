@@ -7,16 +7,21 @@ Personal productivity dashboard. Cloudflare Pages (frontend) + Worker (API) + D1
 - **Worker:** `worker/index.js`. Deploy: `npx wrangler deploy`
 - **DB:** Cloudflare D1, binding `DB`, SQLite
 - **AI:** Cloudflare Workers AI, binding `AI`, model `@cf/meta/llama-3.1-8b-instruct`
-- **Auth:** HTTP Basic Auth, no username, password = `APP_PASSWORD` Worker secret
+- **Auth:** HMAC-signed 30-day tokens stored in `localStorage`. `POST /api/auth/token` exchanges password for token. Worker accepts `Bearer <token>` or `Basic` header. Changing `APP_PASSWORD` invalidates all tokens.
+- **PWA:** `manifest.json` + `sw.js` (network-first for HTML, cache-first for static assets). Android share target points to `save.html`.
 
 ## Pages
 - `index.html` + `dashboard.js` — Dashboard (Tasks Today, Schedule, Daily Brief, AI Chat)
 - `tasks.html` + `tasks.js` — Tasks CRUD
 - `calendar.html` + `calendar.js` — Calendar + Outlook ICS sync
-- `notes.html` + `notes.js` — Notes
-- `api.js` — Shared `apiFetch()` helper + auth (sessionStorage password)
-- `nav.js` — Nav bar
+- `notes.html` + `notes.js` — Notes (split-panel: list left, editor right)
+- `saves.html` + `saves.js` — Save for Later (bookmarks grid with filters)
+- `save.html` — PWA share target; receives shared URL from Android share sheet
+- `api.js` — Shared `apiFetch()` + localStorage token auth
+- `nav.js` — Nav bar + hamburger toggle
 - `style.css` — Dark theme, design tokens
+- `sw.js` — Service worker (cache `cerebro-v3`)
+- `manifest.json` — PWA manifest with share_target + shortcuts
 
 ## DB Schema
 ```sql
@@ -26,6 +31,7 @@ notes(id, title, content, event_id, tags, created_at, updated_at)
 outlook_events(uid, title, description, organizer, location, start_time, end_time, is_all_day, recurrence_rule, recurrence_exceptions, event_tzid, local_start, synced_at)
 hidden_outlook_events(uid, title, hidden_at)
 settings(key TEXT PK, value TEXT)
+saves(id, url, title, description, thumbnail, type[article|video|link], tags, is_read, created_at)
 ```
 
 ## Settings Keys
@@ -43,8 +49,9 @@ settings(key TEXT PK, value TEXT)
 ### D1 Migrations
 **Never use `wrangler d1 execute`.** Add migrations as `try/catch` `ALTER TABLE` statements at the top of the Worker `fetch()` handler.
 
-### API Routes (all require Basic Auth)
+### API Routes
 ```
+POST            /api/auth/token             — no auth; exchanges password for 30-day token
 GET/POST        /api/tasks
 PATCH           /api/tasks/:id
 GET/POST        /api/events
@@ -59,10 +66,16 @@ GET/POST/PATCH  /api/notes[/:id]
 POST            /api/chat
 GET             /api/brief
 GET/PUT         /api/brief/settings
+GET/POST        /api/saves
+PATCH/DELETE    /api/saves/:id
 ```
 
 ### Daily Brief
 `GET /api/brief` fetches in parallel: Yahoo Finance v8 chart API (stocks), ESPN API (sports), Bing News RSS w/ Google fallback (news), D1 (due tasks + today's meetings).
+Order: Due Today → Today's Schedule → News → Stocks → Sports.
+
+### Saves / Metadata
+`POST /api/saves` calls `fetchSaveMeta(url)` server-side: YouTube URLs use oEmbed, all others extract Open Graph tags. Auto-detects type (video/article/link).
 
 ### Recurring Events
 - Personal: `recurrence_type` field, instances generated on-demand
@@ -74,9 +87,17 @@ Cron: `0 */6 * * *`. Parses ICS from `OUTLOOK_ICS_URL` secrets, stores base even
 ### AI Chat
 Two modes: `chat` (conversational, can create tasks/events) and `transcript` (extract tasks/events from meeting notes). Context includes recent tasks, events, notes injected into system prompt.
 
+### Service Worker
+Cache key is `cerebro-vN`. **Bump N whenever deploying JS/CSS changes** to force clients to pick up the new files. HTML pages are network-first so they always load fresh; only static assets are cache-first.
+
 ## Applied Learning
 When something fails repeatedly, when Adrian has to re-explain, or when a workaround is found for a platform/tool limitation, add a one-line bullet here. Keep each bullet under 15 words. No explanations. Only add things that will save time in future sessions.
 
 - Google News RSS blocks Cloudflare Worker IPs on some edge regions; use Bing RSS instead.
 - Yahoo Finance v7 `/quote` requires crumb/cookie; use v8 `/chart/{symbol}` per-symbol instead.
 - Don't use `cf: { cacheTtl }` on external fetches that may fail — caches the failure.
+- Service worker caches old JS/CSS; bump `CACHE` version string on every frontend deploy.
+- SW fetch handler must not call `respondWith` with a rejecting promise — causes ERR_FAILED on mobile.
+- Sports team filter: check all words in user's search appear in team name (not reverse).
+- `checkAuth` is now async; always `await` it at every call site.
+- Branches diverge from main; merge main before building features to avoid reverting fixes.
