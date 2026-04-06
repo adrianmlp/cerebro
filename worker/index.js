@@ -1442,13 +1442,14 @@ Reply in 1-3 sentences. For create task/event return JSON: {"message":"...","act
         if (!await checkAuth(request, env)) return json({ error: 'Unauthorized' }, 401);
 
         const today = url.searchParams.get('date') || new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Los_Angeles' }).format(new Date());
+        const endDate = (() => { const d = new Date(today + 'T12:00:00'); d.setDate(d.getDate() + 6); return d.toISOString().slice(0,10); })();
 
         // Load settings + D1 data in parallel
         const [tickerRow, teamRow, topicRow, { results: dueTasks }, personalEvRes, outlookEvRes] = await Promise.all([
           env.DB.prepare('SELECT value FROM settings WHERE key=?').bind('brief_tickers').first(),
           env.DB.prepare('SELECT value FROM settings WHERE key=?').bind('brief_teams').first(),
           env.DB.prepare('SELECT value FROM settings WHERE key=?').bind('brief_topics').first(),
-          env.DB.prepare(`SELECT title, priority FROM tasks WHERE completed=0 AND due_date=? ORDER BY priority`).bind(today).all(),
+          env.DB.prepare(`SELECT title, priority, due_date FROM tasks WHERE completed=0 AND due_date BETWEEN ? AND ? ORDER BY due_date, priority`).bind(today, endDate).all(),
           (async () => {
             try {
               const r = await fetch(`${url.origin}/api/events?start=${today}&end=${today}`, { headers: request.headers });

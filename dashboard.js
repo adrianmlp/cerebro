@@ -3,12 +3,6 @@ import { initNav } from './nav.js';
 
 initNav('dashboard');
 
-// ── Chip collapse/expand ──
-document.getElementById('tasks-chip-toggle').addEventListener('click', e => {
-  if (e.target.closest('button, a')) return;
-  document.getElementById('tasks-chip').classList.toggle('open');
-});
-
 // ── Helpers ──
 function closeModal(id) {
   document.getElementById(id).classList.remove('open');
@@ -24,92 +18,8 @@ document.querySelectorAll('.modal-backdrop').forEach(el => {
   el.addEventListener('click', e => { if (e.target === el) el.classList.remove('open'); });
 });
 
-// ── Load Tasks Summary ──
-async function loadTasks() {
-  const { tasks } = await apiFetch('/api/tasks?completed=false&sort=priority');
-  const allTasks = await apiFetch('/api/tasks');
-  const total = allTasks.tasks.length;
-  const done  = allTasks.tasks.filter(t => t.completed).length;
-  const pct   = total ? Math.round(done / total * 100) : 0;
-
-  document.getElementById('todo-subtitle').textContent = `${tasks.length} open · ${done} completed`;
-  document.getElementById('todo-progress').style.width = pct + '%';
-  document.getElementById('todo-pct').textContent = pct + '%';
-
-  const list = document.getElementById('todo-list');
-  const top5 = tasks.slice(0, 5);
-
-  if (!top5.length) {
-    list.innerHTML = `<div class="empty-state" style="padding:20px 0"><div class="empty-text">All caught up! 🎉</div></div>`;
-    return;
-  }
-
-  list.innerHTML = top5.map(t => `
-    <div class="task-item" data-id="${t.id}">
-      <input type="checkbox" class="task-checkbox" ${t.completed ? 'checked' : ''} onchange="toggleTask('${t.id}', this.checked)" />
-      <div class="task-body">
-        <div class="task-title">${t.title}</div>
-        ${t.due_date ? `<div class="task-meta"><span class="task-due${isPast(t.due_date) && !t.completed ? ' overdue' : ''}">${t.due_date}</span></div>` : ''}
-      </div>
-      ${priorityBadge(t.priority)}
-    </div>
-  `).join('');
-}
-
-// ── Load Today's Schedule ──
-async function loadSchedule() {
-  const today = localDateStr();
-
-  const [personalRes, outlookRes] = await Promise.all([
-    apiFetch(`/api/events?start=${today}&end=${today}`),
-    apiFetch(`/api/outlook/events?start=${today}&end=${today}`).catch(() => ({ events: [] })),
-  ]);
-
-  const personal = (personalRes.events || []).map(e => ({ ...e, _source: 'personal' }));
-  const work     = (outlookRes.events  || []).map(e => ({ ...e, _source: 'work' }));
-
-  // Merge and sort by start time
-  const allEvents = [...personal, ...work].sort((a, b) =>
-    (a.start_time || '').localeCompare(b.start_time || '')
-  );
-
-  const subtitle = document.getElementById('schedule-subtitle');
-  const list = document.getElementById('schedule-list');
-
-  const d = new Date();
-  subtitle.textContent = `${d.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })} · ${allEvents.length} event${allEvents.length !== 1 ? 's' : ''}`;
-
-  if (!allEvents.length) {
-    list.innerHTML = `<div class="empty-state" style="padding:20px 0"><div class="empty-text">No events today</div></div>`;
-    return;
-  }
-
-  list.innerHTML = allEvents.map(e => {
-    const isWork = e._source === 'work';
-    const borderColor = isWork ? '#38BDF8' : (e.color || 'var(--violet)');
-    const badge = isWork
-      ? `<span style="font-size:10px;color:#38BDF8;opacity:0.8;margin-left:auto;flex-shrink:0">🏢</span>`
-      : (e.recurrence_type !== 'NONE' ? '<span style="font-size:11px;color:var(--text-3);margin-left:auto">↻</span>' : '');
-    return `
-      <div class="event-chip" style="border-color:${borderColor}">
-        <div class="event-chip-time">${formatTime(e.start_time)}</div>
-        <div class="event-chip-title">${e.title}</div>
-        ${badge}
-      </div>
-    `;
-  }).join('');
-}
-
-// ── Toggle task done ──
-window.toggleTask = async function(id, completed) {
-  try {
-    await apiFetch(`/api/tasks/${id}`, { method: 'PATCH', body: JSON.stringify({ completed }) });
-    loadTasks();
-  } catch (e) { toast(e.message, 'error'); }
-};
-
 // ── Quick Add Task ──
-document.getElementById('todo-add-btn').addEventListener('click', () => openModal('task-modal'));
+document.getElementById('brief-add-task-btn').addEventListener('click', () => openModal('task-modal'));
 
 document.getElementById('task-save-btn').addEventListener('click', async () => {
   const title = document.getElementById('task-title').value.trim();
@@ -126,7 +36,7 @@ document.getElementById('task-save-btn').addEventListener('click', async () => {
     closeModal('task-modal');
     document.getElementById('task-title').value = '';
     toast('Task added', 'success');
-    loadTasks();
+    loadBrief();
   } catch (e) { toast(e.message, 'error'); }
 });
 
@@ -315,16 +225,25 @@ async function loadBrief() {
   try {
     const data = await apiFetch(`/api/brief?date=${localDateStr()}`);
 
-    // Sections: due today
+    // Sections: upcoming tasks (next 7 days)
+    const today = localDateStr();
+    const tomorrow = localDateStr(new Date(Date.now() + 86400000));
+    function fmtDue(d) {
+      if (d === today) return 'Today';
+      if (d === tomorrow) return 'Tomorrow';
+      const [y, m, day] = d.split('-');
+      return new Date(y, m-1, day).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    }
     const dueSec = data.dueToday?.length
-      ? `<div class="brief-due-list">${data.dueToday.slice(0,5).map(t=>`
+      ? `<div class="brief-due-list">${data.dueToday.slice(0,7).map(t=>`
           <div class="brief-due-item">
             <div class="brief-due-dot ${PRIORITY_DOT[t.priority]||'NORMAL'}"></div>
-            <span>${t.title}</span>
+            <span class="brief-due-title">${t.title}</span>
+            <span class="brief-due-date">${fmtDue(t.due_date)}</span>
           </div>`).join('')}
-          ${data.dueToday.length > 5 ? `<div class="brief-empty">+${data.dueToday.length-5} more</div>` : ''}
+          ${data.dueToday.length > 7 ? `<div class="brief-empty">+${data.dueToday.length-7} more</div>` : ''}
         </div>`
-      : `<div class="brief-empty">Nothing due today</div>`;
+      : `<div class="brief-empty">No tasks due in the next 7 days</div>`;
 
     // Meetings
     const meetSec = data.meetings?.length
@@ -428,7 +347,7 @@ async function loadBrief() {
     body.innerHTML = `<div class="brief-grid">
       <div class="brief-top-row">
         <div>
-          <div class="brief-section-label">📌 Due Today</div>
+          <div class="brief-section-label">📌 Upcoming Tasks <button class="brief-add-btn" id="brief-add-task-btn">+ Add</button></div>
           ${dueSec}
         </div>
         <a class="brief-section-link brief-section-block" href="calendar.html?view=day&date=${localDateStr()}">
@@ -466,6 +385,4 @@ document.getElementById('brief-refresh-btn').addEventListener('click', () => {
 });
 
 // ── Init ──
-loadTasks().catch(e => toast(e.message, 'error'));
-loadSchedule().catch(e => toast(e.message, 'error'));
 loadBrief().catch(e => toast(e.message, 'error'));

@@ -1773,12 +1773,26 @@ body {
   color: var(--text);
   min-width: 0;
 }
-.brief-due-item span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.brief-due-title { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.brief-due-date  { font-size: 11px; color: var(--text-3); flex-shrink: 0; margin-left: auto; padding-left: 6px; }
 .brief-due-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
 .brief-due-dot.URGENT { background: var(--urgent); }
 .brief-due-dot.HIGH   { background: var(--high); }
 .brief-due-dot.NORMAL { background: var(--normal); }
 .brief-due-dot.BACKLOG{ background: var(--backlog); }
+.brief-add-btn {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: var(--r-btn);
+  color: var(--text-3);
+  font-size: 11px;
+  padding: 2px 8px;
+  cursor: pointer;
+  margin-left: 8px;
+  transition: border-color 0.15s, color 0.15s;
+  vertical-align: middle;
+}
+.brief-add-btn:hover { border-color: var(--border-hover); color: var(--indigo); }
 
 /* Meetings mini list */
 .brief-meeting-list {
