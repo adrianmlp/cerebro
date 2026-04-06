@@ -109,6 +109,75 @@ async function runMigrations(env) {
   try { await env.DB.prepare(`ALTER TABLE outlook_events ADD COLUMN local_start TEXT`).run(); } catch(e) {}
 }
 
+// ── Gmail OAuth helpers ──
+async function getGmailAccessToken(env) {
+  const [tokenRow, expiresRow, refreshRow] = await Promise.all([
+    env.DB.prepare('SELECT value FROM settings WHERE key=?').bind('gmail_access_token').first(),
+    env.DB.prepare('SELECT value FROM settings WHERE key=?').bind('gmail_token_expires').first(),
+    env.DB.prepare('SELECT value FROM settings WHERE key=?').bind('gmail_refresh_token').first(),
+  ]);
+  if (!refreshRow?.value) return null;
+  // Return cached token if still valid (with 60s buffer)
+  if (tokenRow?.value && parseInt(expiresRow?.value||'0') > Date.now() + 60000) return tokenRow.value;
+  // Refresh
+  const res = await fetch('https://oauth2.googleapis.com/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({ client_id: env.GOOGLE_CLIENT_ID, client_secret: env.GOOGLE_CLIENT_SECRET, refresh_token: refreshRow.value, grant_type: 'refresh_token' }),
+  });
+  if (!res.ok) return null;
+  const data = await res.json();
+  await Promise.all([
+    env.DB.prepare('INSERT OR REPLACE INTO settings (key,value) VALUES (?,?)').bind('gmail_access_token', data.access_token).run(),
+    env.DB.prepare('INSERT OR REPLACE INTO settings (key,value) VALUES (?,?)').bind('gmail_token_expires', String(Date.now() + data.expires_in * 1000)).run(),
+  ]);
+  return data.access_token;
+}
+
+async function fetchGmailEmails(env) {
+  const token = await getGmailAccessToken(env);
+  if (!token) return [];
+  const [sendersRow, topicsRow] = await Promise.all([
+    env.DB.prepare('SELECT value FROM settings WHERE key=?').bind('gmail_filter_senders').first(),
+    env.DB.prepare('SELECT value FROM settings WHERE key=?').bind('gmail_filter_topics').first(),
+  ]);
+  const senders = (sendersRow?.value || '').split(',').map(s => s.trim()).filter(Boolean);
+  const topics  = (topicsRow?.value  || '').split(',').map(t => t.trim()).filter(Boolean);
+  if (!senders.length && !topics.length) return [];
+  const parts = [];
+  if (senders.length) parts.push('(' + senders.map(s => `from:${s}`).join(' OR ') + ')');
+  if (topics.length)  parts.push('(' + topics.map(t => `subject:${t} OR body:${t}`).join(' OR ') + ')');
+  const q = `is:unread newer_than:2d (${parts.join(' OR ')})`;
+  const listRes = await fetch(
+    `https://gmail.googleapis.com/gmail/v1/users/me/messages?q=${encodeURIComponent(q)}&maxResults=10`,
+    { headers: { Authorization: `Bearer ${token}` } }
+  );
+  if (!listRes.ok) return [];
+  const { messages = [] } = await listRes.json();
+  const settled = await Promise.allSettled(messages.map(async m => {
+    const r = await fetch(
+      `https://gmail.googleapis.com/gmail/v1/users/me/messages/${m.id}?format=metadata&metadataHeaders=From&metadataHeaders=Subject&metadataHeaders=Date`,
+      { headers: { Authorization: `Bearer ${token}` } }
+    );
+    if (!r.ok) return null;
+    const msg = await r.json();
+    const get = name => (msg.payload?.headers || []).find(h => h.name === name)?.value || '';
+    const fromRaw = get('From');
+    const fm = fromRaw.match(/^"?([^"<]+?)"?\s*<(.+?)>$/);
+    return {
+      id: msg.id,
+      fromName:    fm ? fm[1].trim() : fromRaw,
+      fromEmail:   fm ? fm[2]        : fromRaw,
+      subject:     get('Subject') || '(no subject)',
+      snippet:     msg.snippet || '',
+      date:        get('Date'),
+      isImportant: (msg.labelIds || []).includes('IMPORTANT'),
+      link:        `https://mail.google.com/mail/u/0/#inbox/${msg.id}`,
+    };
+  }));
+  return settled.map(r => r.status === 'fulfilled' ? r.value : null).filter(Boolean);
+}
+
 // ── Save metadata fetcher ──
 async function fetchSaveMeta(url) {
   const meta = { title: '', description: '', thumbnail: '', type: 'link' };
@@ -892,6 +961,38 @@ async function handleRequest(request, env) {
       return json({ token });
     }
 
+    // ── Gmail OAuth callback (no Cerebro auth — comes from Google redirect) ──
+    if (path === '/api/gmail/callback' && method === 'GET') {
+      const code  = url.searchParams.get('code');
+      const state = url.searchParams.get('state');
+      const stateRow = await env.DB.prepare('SELECT value FROM settings WHERE key=?').bind('gmail_oauth_state').first();
+      const [savedState, origin] = (stateRow?.value || '').split('|');
+      if (!code || !state || state !== savedState) {
+        return new Response('Invalid OAuth state', { status: 400 });
+      }
+      // Exchange code for tokens
+      const res = await fetch('https://oauth2.googleapis.com/token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+          code, client_id: env.GOOGLE_CLIENT_ID, client_secret: env.GOOGLE_CLIENT_SECRET,
+          redirect_uri: `${url.origin}/api/gmail/callback`, grant_type: 'authorization_code',
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.text();
+        return new Response(`Token exchange failed: ${err}`, { status: 400 });
+      }
+      const data = await res.json();
+      await Promise.all([
+        env.DB.prepare('INSERT OR REPLACE INTO settings (key,value) VALUES (?,?)').bind('gmail_refresh_token', data.refresh_token).run(),
+        env.DB.prepare('INSERT OR REPLACE INTO settings (key,value) VALUES (?,?)').bind('gmail_access_token', data.access_token).run(),
+        env.DB.prepare('INSERT OR REPLACE INTO settings (key,value) VALUES (?,?)').bind('gmail_token_expires', String(Date.now() + (data.expires_in||3600) * 1000)).run(),
+        env.DB.prepare('DELETE FROM settings WHERE key=?').bind('gmail_oauth_state').run(),
+      ]);
+      return Response.redirect(`${origin || url.origin}/settings.html?gmail=connected`, 302);
+    }
+
     if (path.startsWith('/api/') && !await checkAuth(request, env)) {
       return new Response('Unauthorized', {
         status: 401,
@@ -1464,14 +1565,68 @@ Reply in 1-3 sentences. For create task/event return JSON: {"message":"...","act
         const meetings   = [...personalEv, ...workEv].sort((a,b)=>(a.start_time||'').localeCompare(b.start_time||''));
 
         // Fetch external data in parallel
-        const [stocks, sports, news, sportsNews] = await Promise.all([
+        const [stocks, sports, news, sportsNews, gmailEmails] = await Promise.all([
           briefFetchStocks(tickerRow?.value || ''),
           briefFetchSports(teamRow?.value   || ''),
           briefFetchNews(topicRow?.value    || ''),
           briefFetchNews(teamRow?.value     || ''),
+          fetchGmailEmails(env).catch(() => []),
         ]);
 
-        return json({ dueToday: dueTasks, meetings, stocks, sports, news, sportsNews, settings: { tickers: tickerRow?.value||'', teams: teamRow?.value||'', topics: topicRow?.value||'' } });
+        return json({ dueToday: dueTasks, meetings, stocks, sports, news, sportsNews, gmailEmails, settings: { tickers: tickerRow?.value||'', teams: teamRow?.value||'', topics: topicRow?.value||'' } });
+      }
+
+      // ──────────────────────────────
+      // GMAIL
+      // ──────────────────────────────
+      if (seg[1] === 'gmail') {
+        // Start OAuth flow
+        if (seg[2] === 'auth' && method === 'GET') {
+          const origin = url.searchParams.get('origin') || url.origin;
+          const state  = crypto.randomUUID().replace(/-/g,'');
+          await env.DB.prepare('INSERT OR REPLACE INTO settings (key,value) VALUES (?,?)').bind('gmail_oauth_state', `${state}|${origin}`).run();
+          const authUrl = new URL('https://accounts.google.com/o/oauth2/v2/auth');
+          authUrl.searchParams.set('client_id',     env.GOOGLE_CLIENT_ID);
+          authUrl.searchParams.set('redirect_uri',  `${url.origin}/api/gmail/callback`);
+          authUrl.searchParams.set('response_type', 'code');
+          authUrl.searchParams.set('scope',         'https://www.googleapis.com/auth/gmail.readonly');
+          authUrl.searchParams.set('access_type',   'offline');
+          authUrl.searchParams.set('prompt',         'consent');
+          authUrl.searchParams.set('state',          state);
+          return Response.redirect(authUrl.toString(), 302);
+        }
+        // Connection status
+        if (seg[2] === 'status' && method === 'GET') {
+          const row = await env.DB.prepare('SELECT value FROM settings WHERE key=?').bind('gmail_refresh_token').first();
+          return json({ connected: !!row?.value });
+        }
+        // Disconnect
+        if (seg[2] === 'disconnect' && method === 'DELETE') {
+          await Promise.all([
+            env.DB.prepare('DELETE FROM settings WHERE key=?').bind('gmail_refresh_token').run(),
+            env.DB.prepare('DELETE FROM settings WHERE key=?').bind('gmail_access_token').run(),
+            env.DB.prepare('DELETE FROM settings WHERE key=?').bind('gmail_token_expires').run(),
+          ]);
+          return json({ ok: true });
+        }
+        // Gmail filter settings
+        if (seg[2] === 'settings') {
+          if (method === 'GET') {
+            const [sr, tr] = await Promise.all([
+              env.DB.prepare('SELECT value FROM settings WHERE key=?').bind('gmail_filter_senders').first(),
+              env.DB.prepare('SELECT value FROM settings WHERE key=?').bind('gmail_filter_topics').first(),
+            ]);
+            return json({ senders: sr?.value || '', topics: tr?.value || '' });
+          }
+          if (method === 'PUT') {
+            const { senders, topics } = await request.json();
+            await Promise.all([
+              env.DB.prepare('INSERT OR REPLACE INTO settings (key,value) VALUES (?,?)').bind('gmail_filter_senders', senders || '').run(),
+              env.DB.prepare('INSERT OR REPLACE INTO settings (key,value) VALUES (?,?)').bind('gmail_filter_topics',  topics  || '').run(),
+            ]);
+            return json({ ok: true });
+          }
+        }
       }
 
       return json({ error: 'Not found' }, 404);

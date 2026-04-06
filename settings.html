@@ -65,6 +65,39 @@
     </div>
   </div>
 
+  <!-- Gmail -->
+  <div class="card settings-section">
+    <div class="card-body">
+      <div class="settings-section-title">Gmail</div>
+      <div id="gmail-status-row" class="settings-row">
+        <div id="gmail-disconnected" style="display:none">
+          <p class="settings-hint" style="margin-bottom:12px">Connect your Gmail account to see important emails in your Daily Brief and quickly create tasks, events, or notes from them.</p>
+          <button class="btn btn-primary" id="gmail-connect-btn">Connect Gmail</button>
+        </div>
+        <div id="gmail-connected" style="display:none">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px">
+            <span style="color:var(--green);font-size:18px">✓</span>
+            <span style="color:var(--text);font-size:14px">Gmail connected</span>
+            <button class="btn btn-ghost btn-sm" id="gmail-disconnect-btn" style="margin-left:auto">Disconnect</button>
+          </div>
+          <div class="settings-row">
+            <label class="settings-label">Watch Senders</label>
+            <div class="tag-input-wrap" id="gmail-senders-wrap"></div>
+            <div class="settings-hint">Emails from these addresses will appear in your brief</div>
+          </div>
+          <div class="settings-row">
+            <label class="settings-label">Watch Keywords</label>
+            <div class="tag-input-wrap" id="gmail-topics-wrap"></div>
+            <div class="settings-hint">Emails with these words in the subject will appear in your brief</div>
+          </div>
+          <div class="settings-save-row">
+            <button class="btn btn-primary" id="gmail-filters-save-btn">Save Gmail Filters</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
 </main>
 
 <!-- Mobile Bottom Nav -->

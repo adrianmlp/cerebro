@@ -18,9 +18,30 @@ document.querySelectorAll('.modal-backdrop').forEach(el => {
   el.addEventListener('click', e => { if (e.target === el) el.classList.remove('open'); });
 });
 
-// ── Quick Add Task (delegated — button is rendered dynamically in brief) ──
+// ── Brief action buttons (delegated — rendered dynamically) ──
 document.addEventListener('click', e => {
-  if (e.target.closest('#brief-add-task-btn')) openModal('task-modal');
+  if (e.target.closest('#brief-add-task-btn')) { openModal('task-modal'); return; }
+  const emailBtn = e.target.closest('.brief-email-action[data-action]');
+  if (emailBtn) {
+    const action  = emailBtn.dataset.action;
+    const subject = emailBtn.dataset.subject || '';
+    const snippet = emailBtn.dataset.snippet || '';
+    if (action === 'task') {
+      document.getElementById('task-title').value    = subject;
+      document.getElementById('task-priority').value = 'NORMAL';
+      document.getElementById('task-due').value      = '';
+      openModal('task-modal');
+    } else if (action === 'event') {
+      document.getElementById('event-title').value = subject;
+      document.getElementById('event-date').value  = localDateStr();
+      document.getElementById('event-start').value = '';
+      openModal('event-modal');
+    } else if (action === 'note') {
+      document.getElementById('note-title').value   = subject;
+      document.getElementById('note-content').value = snippet;
+      openModal('note-modal');
+    }
+  }
 });
 
 document.getElementById('task-save-btn').addEventListener('click', async () => {
@@ -42,6 +63,20 @@ document.getElementById('task-save-btn').addEventListener('click', async () => {
   } catch (e) { toast(e.message, 'error'); }
 });
 
+
+// ── Note quick-add (also used from email action) ──
+document.getElementById('note-save-btn').addEventListener('click', async () => {
+  const title   = document.getElementById('note-title').value.trim();
+  const content = document.getElementById('note-content').value.trim();
+  if (!title) { toast('Title is required', 'error'); return; }
+  try {
+    await apiFetch('/api/notes', { method: 'POST', body: JSON.stringify({ title, content }) });
+    closeModal('note-modal');
+    document.getElementById('note-title').value   = '';
+    document.getElementById('note-content').value = '';
+    toast('Note added', 'success');
+  } catch (e) { toast(e.message, 'error'); }
+});
 
 document.getElementById('event-save-btn').addEventListener('click', async () => {
   const title = document.getElementById('event-title').value.trim();
@@ -346,6 +381,26 @@ async function loadBrief() {
         ? `<div class="brief-empty">Could not load news — try refreshing</div>`
         : `<div class="brief-empty">No news topics configured — click ⚙ Settings to add some</div>`;
 
+    // Gmail emails
+    const gmailSec = data.gmailEmails?.length
+      ? `<div class="brief-emails">${data.gmailEmails.map(e => `
+          <div class="brief-email${e.isImportant ? ' important' : ''}">
+            <div class="brief-email-meta">
+              <span class="brief-email-from">${e.fromName || e.fromEmail}</span>
+              ${e.isImportant ? '<span class="brief-email-star">★</span>' : ''}
+              <span class="brief-email-date">${e.date ? new Date(e.date).toLocaleDateString('en-US',{month:'short',day:'numeric'}) : ''}</span>
+            </div>
+            <div class="brief-email-subject">${e.subject}</div>
+            <div class="brief-email-snippet">${e.snippet}</div>
+            <div class="brief-email-actions">
+              <button class="brief-email-action" data-action="task"  data-subject="${e.subject.replace(/"/g,'&quot;')}" data-snippet="${e.snippet.replace(/"/g,'&quot;')}">→ Task</button>
+              <button class="brief-email-action" data-action="event" data-subject="${e.subject.replace(/"/g,'&quot;')}" data-snippet="${e.snippet.replace(/"/g,'&quot;')}">→ Event</button>
+              <button class="brief-email-action" data-action="note"  data-subject="${e.subject.replace(/"/g,'&quot;')}" data-snippet="${e.snippet.replace(/"/g,'&quot;')}">→ Note</button>
+              <a class="brief-email-action" href="${e.link}" target="_blank" rel="noopener">Open ↗</a>
+            </div>
+          </div>`).join('')}</div>`
+      : '';
+
     body.innerHTML = `<div class="brief-grid">
       <div class="brief-top-row">
         <div>
@@ -357,6 +412,7 @@ async function loadBrief() {
           ${meetSec}
         </a>
       </div>
+      ${gmailSec ? `<div><div class="brief-section-label">📧 Emails</div>${gmailSec}</div>` : ''}
       <div>
         <div class="brief-section-label">📰 News</div>
         ${newsSec}

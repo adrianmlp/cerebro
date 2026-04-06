@@ -106,3 +106,53 @@ document.getElementById('brief-save-btn').addEventListener('click', async () => 
 
 // ── Start ──
 loadSettings();
+
+// ── Gmail ──
+async function loadGmailStatus() {
+  try {
+    const { connected } = await apiFetch('/api/gmail/status');
+    document.getElementById('gmail-disconnected').style.display = connected ? 'none' : 'block';
+    document.getElementById('gmail-connected').style.display   = connected ? 'block' : 'none';
+    if (connected) {
+      const s = await apiFetch('/api/gmail/settings');
+      if (!gmailSendersTag) gmailSendersTag = makeTagInput('gmail-senders-wrap', s.senders || '');
+      else gmailSendersTag.setValue(s.senders || '');
+      if (!gmailTopicsTag) gmailTopicsTag = makeTagInput('gmail-topics-wrap', s.topics || '');
+      else gmailTopicsTag.setValue(s.topics || '');
+    }
+  } catch { /* not configured yet */ }
+}
+
+let gmailSendersTag, gmailTopicsTag;
+
+document.getElementById('gmail-connect-btn').addEventListener('click', () => {
+  const workerUrl = document.querySelector('meta[name="worker-url"]')?.content || '';
+  window.location.href = `${workerUrl}/api/gmail/auth?origin=${encodeURIComponent(window.location.origin)}`;
+});
+
+document.getElementById('gmail-disconnect-btn').addEventListener('click', async () => {
+  if (!confirm('Disconnect Gmail? This will remove your tokens.')) return;
+  try {
+    await apiFetch('/api/gmail/disconnect', { method: 'DELETE' });
+    toast('Gmail disconnected', 'success');
+    loadGmailStatus();
+  } catch (e) { toast(e.message, 'error'); }
+});
+
+document.getElementById('gmail-filters-save-btn').addEventListener('click', async () => {
+  try {
+    await apiFetch('/api/gmail/settings', {
+      method: 'PUT',
+      body: JSON.stringify({ senders: gmailSendersTag?.getValue() || '', topics: gmailTopicsTag?.getValue() || '' }),
+    });
+    toast('Gmail filters saved', 'success');
+  } catch (e) { toast(e.message, 'error'); }
+});
+
+// Check for ?gmail=connected in URL after OAuth redirect
+if (new URLSearchParams(location.search).get('gmail') === 'connected') {
+  toast('Gmail connected successfully!', 'success');
+  history.replaceState({}, '', location.pathname);
+}
+
+loadGmailStatus();
