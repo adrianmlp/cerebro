@@ -838,6 +838,8 @@ async function briefFetchSports(teamStr) {
           .slice(0, 4);
         // statusState: 'pre' = not started, 'in' = live, 'post' = final
         const statusState = comp?.status?.type?.state || 'pre';
+        // shortDetail gives nicely-formatted game state e.g. "Q3 - 5:22", "Top 3rd", "76'", "2nd OT"
+        const statusDetail = comp?.status?.type?.shortDetail || comp?.status?.type?.detail || '';
         return {
           league,
           home:        home?.team?.displayName || '',
@@ -846,6 +848,7 @@ async function briefFetchSports(teamStr) {
           awayScore:   statusState !== 'pre' ? (away?.score ?? '') : '',
           status:      comp?.status?.type?.description || '',
           statusState,
+          statusDetail,
           date:        ev.date || '',
           link:        `https://www.espn.com/${sportPath}/game/_/gameId/${ev.id}`,
           broadcasts,

@@ -321,9 +321,14 @@ async function loadBrief() {
           const aScore = hasScore ? parseInt(g.awayScore, 10) : -1;
           const hScore = hasScore ? parseInt(g.homeScore, 10) : -1;
           const isScheduled = g.statusState === 'pre' || (!hasScore && (g.status === 'Scheduled' || g.status === ''));
+          const isLive = g.statusState === 'in';
+          // For live games prefer shortDetail ("Q3 - 5:22", "Top 3rd", "76'"); fall back to description
+          const liveStr = g.statusDetail || g.status || 'Live';
           const statusStr = isScheduled
             ? briefFmtTime(g.date)
-            : (g.status || (hasScore ? 'Final' : briefFmtTime(g.date)));
+            : isLive
+              ? liveStr
+              : (g.status || (hasScore ? 'Final' : briefFmtTime(g.date)));
           const broadcastHtml = (g.broadcasts?.length && isScheduled)
             ? `<span class="brief-score-tv">${g.broadcasts.join(' · ')}</span>`
             : '';
@@ -339,7 +344,8 @@ async function loadBrief() {
               </div>
             </div>
             <div class="brief-score-footer">
-              <span class="brief-score-status">${statusStr}</span>
+              ${isLive ? '<span class="brief-score-live-dot"></span>' : ''}
+              <span class="brief-score-status${isLive ? ' live' : ''}">${statusStr}</span>
               ${broadcastHtml}
               <span class="brief-score-badge">${g.league.toUpperCase()}</span>
             </div>`;
