@@ -342,8 +342,6 @@ function renderBrief(data) {
   const tomorrow = localDateStr(new Date(Date.now() + 86400000));
 
     // Sections: upcoming tasks (next 7 days)
-    const today = localDateStr();
-    const tomorrow = localDateStr(new Date(Date.now() + 86400000));
     function fmtDue(d) {
       if (!d) return '';
       if (d === today) return 'Today';
