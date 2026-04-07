@@ -1671,7 +1671,7 @@ Reply in 1-3 sentences. For create task/event return JSON: {"message":"...","act
           env.DB.prepare('SELECT value FROM settings WHERE key=?').bind('brief_teams').first(),
           env.DB.prepare('SELECT value FROM settings WHERE key=?').bind('brief_topics').first(),
           env.DB.prepare('SELECT value FROM settings WHERE key=?').bind('weather_zip').first(),
-          env.DB.prepare(`SELECT title, priority, due_date FROM tasks WHERE completed=0 AND due_date BETWEEN ? AND ? ORDER BY due_date, priority`).bind(today, endDate).all(),
+          env.DB.prepare(`SELECT title, priority, due_date FROM tasks WHERE completed=0 AND ((due_date BETWEEN ? AND ?) OR priority IN ('URGENT','HIGH')) ORDER BY CASE priority WHEN 'URGENT' THEN 0 WHEN 'HIGH' THEN 1 ELSE 2 END, due_date ASC NULLS LAST`).bind(today, endDate).all(),
           (async () => {
             try {
               const r = await fetch(`${url.origin}/api/events?start=${today}&end=${today}`, { headers: request.headers });

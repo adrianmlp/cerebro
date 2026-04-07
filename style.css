@@ -2041,30 +2041,40 @@ body {
   .brief-sports { grid-template-columns: 1fr; }
 }
 
-/* ── Gmail Emails ── */
-.brief-emails { display: flex; flex-direction: column; gap: 10px; }
-.brief-email {
-  padding: 12px 14px;
-  background: rgba(255,255,255,0.04);
-  border: 1px solid var(--border);
-  border-radius: var(--r-btn);
-  transition: border-color 0.15s;
+/* ── Gmail Emails (compact rows) ── */
+.brief-email-list { display: flex; flex-direction: column; gap: 1px; }
+.brief-email-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 7px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.12s;
+  min-width: 0;
 }
-.brief-email.important { border-color: rgba(6,182,212,0.25); }
-.brief-email-meta { display: flex; align-items: center; gap: 6px; margin-bottom: 3px; }
-.brief-email-from { font-weight: 600; font-size: 13px; color: var(--text); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.brief-email-star { color: var(--indigo); font-size: 12px; }
-.brief-email-date { font-size: 11px; color: var(--text-3); flex-shrink: 0; }
-.brief-email-subject { font-size: 13px; color: var(--text); font-weight: 500; margin-bottom: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.brief-email-snippet { font-size: 12px; color: var(--text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-bottom: 8px; }
-.brief-email-actions { display: flex; gap: 6px; flex-wrap: wrap; }
-.brief-email-action {
-  font-size: 11px; padding: 3px 9px; border-radius: var(--r-btn);
-  background: rgba(255,255,255,0.05); border: 1px solid var(--border);
-  color: var(--text-2); cursor: pointer; text-decoration: none;
-  transition: border-color 0.15s, color 0.15s;
+.brief-email-row:hover { background: rgba(255,255,255,0.06); }
+.brief-email-row.important .brief-email-row-from { color: var(--indigo); }
+.brief-email-row-from {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex-shrink: 0;
+  width: 140px;
 }
-.brief-email-action:hover { border-color: var(--border-hover); color: var(--indigo); }
+.brief-email-row-subject {
+  font-size: 13px;
+  color: var(--text-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 1;
+  min-width: 0;
+}
+.brief-email-row-star { color: var(--indigo); font-size: 11px; flex-shrink: 0; }
 
 /* ── Tag Input ── */
 .tag-input-wrap {

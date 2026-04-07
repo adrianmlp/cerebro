@@ -43,32 +43,55 @@ async function openNewsTopic(topic) {
   }
 }
 
+// ── Email preview modal ──
+let _previewEmail = null;
+
+function openEmailPreview(email) {
+  _previewEmail = email;
+  document.getElementById('email-modal-subject').textContent = email.subject || '(no subject)';
+  document.getElementById('email-modal-from').textContent    = email.fromName
+    ? `${email.fromName} <${email.fromEmail}>`
+    : (email.fromEmail || '');
+  document.getElementById('email-modal-snippet').textContent = email.snippet || '(no preview available)';
+  document.getElementById('email-modal-open-link').href      = email.link || '#';
+  openModal('email-preview-modal');
+}
+
+function emailAction(action) {
+  if (!_previewEmail) return;
+  const subject = _previewEmail.subject || '';
+  const snippet = _previewEmail.snippet || '';
+  closeModal('email-preview-modal');
+  if (action === 'task') {
+    document.getElementById('task-title').value    = subject;
+    document.getElementById('task-priority').value = 'NORMAL';
+    document.getElementById('task-due').value      = '';
+    openModal('task-modal');
+  } else if (action === 'event') {
+    document.getElementById('event-title').value = subject;
+    document.getElementById('event-date').value  = localDateStr();
+    document.getElementById('event-start').value = '';
+    openModal('event-modal');
+  } else if (action === 'note') {
+    document.getElementById('note-title').value   = subject;
+    document.getElementById('note-content').value = snippet;
+    openModal('note-modal');
+  }
+}
+
+document.getElementById('email-modal-task-btn').addEventListener('click',  () => emailAction('task'));
+document.getElementById('email-modal-event-btn').addEventListener('click', () => emailAction('event'));
+document.getElementById('email-modal-note-btn').addEventListener('click',  () => emailAction('note'));
+
 // ── Brief action buttons (delegated — rendered dynamically) ──
+let _briefEmails = [];
+
 document.addEventListener('click', e => {
   if (e.target.closest('#brief-add-task-btn')) { openModal('task-modal'); return; }
   const topicHeader = e.target.closest('.brief-news-group-header[data-topic]');
   if (topicHeader) { openNewsTopic(topicHeader.dataset.topic); return; }
-  const emailBtn = e.target.closest('.brief-email-action[data-action]');
-  if (emailBtn) {
-    const action  = emailBtn.dataset.action;
-    const subject = emailBtn.dataset.subject || '';
-    const snippet = emailBtn.dataset.snippet || '';
-    if (action === 'task') {
-      document.getElementById('task-title').value    = subject;
-      document.getElementById('task-priority').value = 'NORMAL';
-      document.getElementById('task-due').value      = '';
-      openModal('task-modal');
-    } else if (action === 'event') {
-      document.getElementById('event-title').value = subject;
-      document.getElementById('event-date').value  = localDateStr();
-      document.getElementById('event-start').value = '';
-      openModal('event-modal');
-    } else if (action === 'note') {
-      document.getElementById('note-title').value   = subject;
-      document.getElementById('note-content').value = snippet;
-      openModal('note-modal');
-    }
-  }
+  const emailRow = e.target.closest('.brief-email-row[data-idx]');
+  if (emailRow) { openEmailPreview(_briefEmails[+emailRow.dataset.idx]); return; }
 });
 
 document.getElementById('task-save-btn').addEventListener('click', async () => {
@@ -470,24 +493,15 @@ async function loadBrief() {
         ? `<div class="brief-empty">Could not load news — try refreshing</div>`
         : `<div class="brief-empty">No news topics configured — click ⚙ Settings to add some</div>`;
 
-    // Gmail emails
+    // Gmail emails — compact rows, click → preview modal
+    _briefEmails = data.gmailEmails || [];
     const gmailSec = data.gmailConnected
-      ? (data.gmailEmails?.length
-          ? `<div class="brief-emails">${data.gmailEmails.map(e => `
-              <div class="brief-email${e.isImportant ? ' important' : ''}">
-                <div class="brief-email-meta">
-                  <span class="brief-email-from">${e.fromName || e.fromEmail}</span>
-                  ${e.isImportant ? '<span class="brief-email-star">★</span>' : ''}
-                  <span class="brief-email-date">${e.date ? new Date(e.date).toLocaleDateString('en-US',{month:'short',day:'numeric'}) : ''}</span>
-                </div>
-                <div class="brief-email-subject">${e.subject}</div>
-                <div class="brief-email-snippet">${e.snippet}</div>
-                <div class="brief-email-actions">
-                  <button class="brief-email-action" data-action="task"  data-subject="${e.subject.replace(/"/g,'&quot;')}" data-snippet="${e.snippet.replace(/"/g,'&quot;')}">→ Task</button>
-                  <button class="brief-email-action" data-action="event" data-subject="${e.subject.replace(/"/g,'&quot;')}" data-snippet="${e.snippet.replace(/"/g,'&quot;')}">→ Event</button>
-                  <button class="brief-email-action" data-action="note"  data-subject="${e.subject.replace(/"/g,'&quot;')}" data-snippet="${e.snippet.replace(/"/g,'&quot;')}">→ Note</button>
-                  <a class="brief-email-action" href="${e.link}" target="_blank" rel="noopener">Open ↗</a>
-                </div>
+      ? (_briefEmails.length
+          ? `<div class="brief-email-list">${_briefEmails.map((e, i) => `
+              <div class="brief-email-row${e.isImportant ? ' important' : ''}" data-idx="${i}">
+                <span class="brief-email-row-from">${e.fromName || e.fromEmail}</span>
+                <span class="brief-email-row-subject">${e.subject}</span>
+                ${e.isImportant ? '<span class="brief-email-row-star">★</span>' : ''}
               </div>`).join('')}</div>`
           : `<div class="brief-empty">No matching unread emails — add filters in <a href="settings.html" style="color:var(--indigo)">Settings</a></div>`)
       : null;

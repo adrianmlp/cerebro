@@ -8,7 +8,9 @@ const _params      = new URLSearchParams(location.search);
 let calView        = _params.get('view') || 'month';
 let cursor         = new Date();
 const _dateParam   = _params.get('date');
-if (_dateParam) { cursor = new Date(_dateParam + 'T12:00:00'); } else { cursor.setDate(1); }
+if (_dateParam) { cursor = new Date(_dateParam + 'T12:00:00'); } else if (calView !== 'day') { cursor.setDate(1); }
+// Sync segmented buttons with URL param (HTML defaults to month active)
+document.querySelectorAll('.segmented button').forEach(b => b.classList.toggle('active', b.dataset.view === calView));
 let events         = [];          // personal (Cerebro) events
 let outlookEvents  = [];          // work (Outlook) events
 let selectedColor  = EVENT_COLORS[0];
