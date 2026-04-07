@@ -874,6 +874,12 @@ async function briefFetchNews(topicStr) {
   if (!topics.length) return [];
 
   const raw = t => t?.replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&#39;/g,"'").replace(/&quot;/g,'"').replace(/<[^>]+>/g,'') || '';
+  // Extract source from "Title - Source" pattern when RSS tag is missing
+  function splitTitleSource(title, rssSource) {
+    if (rssSource) return { title, source: rssSource };
+    const m = title.match(/^(.*?)\s+[-–—]\s+([^-–—]{3,50})$/);
+    return m ? { title: m[1].trim(), source: m[2].trim() } : { title, source: '' };
+  }
 
   async function fetchFromBing(topic) {
     const res = await fetch(
@@ -884,11 +890,11 @@ async function briefFetchNews(topicStr) {
     const text = await res.text();
     const results = [];
     for (const [, block] of [...text.matchAll(/<item>([\s\S]*?)<\/item>/g)].slice(0, 3)) {
-      const title   = raw(block.match(/<title>(?:<!\[CDATA\[)?(.*?)(?:\]\]>)?<\/title>/)?.[1]);
-      const link    = block.match(/<link\s*\/?>(.*?)<\/link>/)?.[1]?.trim() || block.match(/<guid[^>]*>(https?:\/\/[^<]+)<\/guid>/)?.[1] || '';
-      const source  = raw(block.match(/<source[^>]*>(.*?)<\/source>/)?.[1]) || raw(block.match(/<provider[^>]*>(.*?)<\/provider>/)?.[1]) || '';
-      const pubDate = block.match(/<pubDate>(.*?)<\/pubDate>/)?.[1] || '';
-      if (title) results.push({ title, link, source, pubDate, topic });
+      const rawTitle = raw(block.match(/<title>(?:<!\[CDATA\[)?(.*?)(?:\]\]>)?<\/title>/)?.[1]);
+      const link     = block.match(/<link\s*\/?>(.*?)<\/link>/)?.[1]?.trim() || block.match(/<guid[^>]*>(https?:\/\/[^<]+)<\/guid>/)?.[1] || '';
+      const rssSource = raw(block.match(/<source[^>]*>(.*?)<\/source>/)?.[1]) || raw(block.match(/<provider[^>]*>(.*?)<\/provider>/)?.[1]) || '';
+      const pubDate  = block.match(/<pubDate>(.*?)<\/pubDate>/)?.[1] || '';
+      if (rawTitle) { const { title, source } = splitTitleSource(rawTitle, rssSource); results.push({ title, link, source, pubDate, topic }); }
     }
     return results;
   }
@@ -902,11 +908,11 @@ async function briefFetchNews(topicStr) {
     const text = await res.text();
     const results = [];
     for (const [, block] of [...text.matchAll(/<item>([\s\S]*?)<\/item>/g)].slice(0, 3)) {
-      const title   = raw(block.match(/<title>(?:<!\[CDATA\[)?(.*?)(?:\]\]>)?<\/title>/)?.[1]);
-      const link    = block.match(/<link>(.*?)<\/link>/)?.[1] || block.match(/<guid[^>]*>(https?:\/\/[^<]+)<\/guid>/)?.[1] || '';
-      const source  = raw(block.match(/<source[^>]*>(.*?)<\/source>/)?.[1]) || '';
-      const pubDate = block.match(/<pubDate>(.*?)<\/pubDate>/)?.[1] || '';
-      if (title) results.push({ title, link, source, pubDate, topic });
+      const rawTitle  = raw(block.match(/<title>(?:<!\[CDATA\[)?(.*?)(?:\]\]>)?<\/title>/)?.[1]);
+      const link      = block.match(/<link>(.*?)<\/link>/)?.[1] || block.match(/<guid[^>]*>(https?:\/\/[^<]+)<\/guid>/)?.[1] || '';
+      const rssSource = raw(block.match(/<source[^>]*>(.*?)<\/source>/)?.[1]) || '';
+      const pubDate   = block.match(/<pubDate>(.*?)<\/pubDate>/)?.[1] || '';
+      if (rawTitle) { const { title, source } = splitTitleSource(rawTitle, rssSource); results.push({ title, link, source, pubDate, topic }); }
     }
     return results;
   }
