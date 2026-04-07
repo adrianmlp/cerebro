@@ -786,26 +786,51 @@ function wmoInfo(code) {
 }
 
 async function geocodeZip(zip) {
-  const q = encodeURIComponent(zip.trim());
-  // Primary: Open-Meteo geocoding — same domain as weather API, guaranteed CF-accessible
+  const raw = zip.trim();
+  const isUsZip = /^\d{5}$/.test(raw);
+
+  // Primary for US ZIP codes: Census Bureau geocoding — free .gov API, handles ZIP natively
+  if (isUsZip) {
+    try {
+      const res = await fetch(
+        `https://geocoding.geo.census.gov/geocoder/locations/address?benchmark=Public_AR_Current&zip=${raw}&format=json`
+      );
+      if (res.ok) {
+        const d = await res.json();
+        const match = d.result?.addressMatches?.[0];
+        if (match) {
+          const { x: lon, y: lat } = match.coordinates;
+          const city  = match.addressComponents?.city  || '';
+          const state = match.addressComponents?.state || '';
+          const name  = [city, state].filter(Boolean).join(', ') || raw;
+          return { lat, lon, name };
+        }
+      }
+    } catch { /* fall through */ }
+  }
+
+  // Fallback: Open-Meteo geocoding (works for city names, may work for some ZIPs)
   try {
-    const res = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${q}&count=3&language=en&format=json`);
+    const res = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(raw)}&count=3&language=en&format=json`);
     if (res.ok) {
       const d = await res.json();
-      // Prefer US results when multiple matches
       const r = d.results?.find(x => x.country_code === 'US') || d.results?.[0];
       if (r) return { lat: r.latitude, lon: r.longitude, name: `${r.name}, ${r.admin1 || ''}`.replace(/, $/, '') };
     }
   } catch { /* fall through */ }
-  // Fallback: zippopotam.us
-  try {
-    const res = await fetch(`https://api.zippopotam.us/us/${q}`);
-    if (res.ok) {
-      const d = await res.json();
-      const place = d.places?.[0];
-      if (place) return { lat: parseFloat(place.latitude), lon: parseFloat(place.longitude), name: `${place['place name']}, ${place['state abbreviation']}` };
-    }
-  } catch { /* give up */ }
+
+  // Last resort for US ZIPs: zippopotam.us
+  if (isUsZip) {
+    try {
+      const res = await fetch(`https://api.zippopotam.us/us/${raw}`);
+      if (res.ok) {
+        const d = await res.json();
+        const place = d.places?.[0];
+        if (place) return { lat: parseFloat(place.latitude), lon: parseFloat(place.longitude), name: `${place['place name']}, ${place['state abbreviation']}` };
+      }
+    } catch { /* give up */ }
+  }
+
   return null;
 }
 

@@ -589,8 +589,19 @@ async function loadBrief(forceRefresh = false) {
       const pos = await new Promise((resolve, reject) =>
         navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 8000, maximumAge: Infinity })
       );
-      locationParam = `&lat=${pos.coords.latitude.toFixed(5)}&lon=${pos.coords.longitude.toFixed(5)}`;
-    } catch { /* denied / unavailable — worker uses stored ZIP */ }
+      const { latitude: lat, longitude: lon } = pos.coords;
+      // Cache GPS coords so future loads work even if GPS is denied/slow
+      localStorage.setItem('cerebro_last_location', JSON.stringify({ lat, lon, ts: Date.now() }));
+      locationParam = `&lat=${lat.toFixed(5)}&lon=${lon.toFixed(5)}`;
+    } catch {
+      // GPS denied/unavailable — try cached location (good for 30 days)
+      try {
+        const loc = JSON.parse(localStorage.getItem('cerebro_last_location') || 'null');
+        if (loc && (Date.now() - loc.ts) < 30 * 24 * 60 * 60 * 1000) {
+          locationParam = `&lat=${loc.lat.toFixed(5)}&lon=${loc.lon.toFixed(5)}`;
+        }
+      } catch { /* fall back to stored ZIP on worker side */ }
+    }
 
     const data = await apiFetch(`/api/brief?date=${localDateStr()}${locationParam}`);
     setBriefCache(data);
