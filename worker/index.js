@@ -146,7 +146,7 @@ async function fetchGmailEmails(env) {
   if (!senders.length && !topics.length) return [];
   const parts = [];
   if (senders.length) parts.push('(' + senders.map(s => `from:${s}`).join(' OR ') + ')');
-  if (topics.length)  parts.push('(' + topics.map(t => `subject:${t} OR body:${t}`).join(' OR ') + ')');
+  if (topics.length)  parts.push('(' + topics.map(t => t.includes(' ') ? `"${t}"` : t).join(' OR ') + ')');
   const q = `is:unread newer_than:2d (${parts.join(' OR ')})`;
   const listRes = await fetch(
     `https://gmail.googleapis.com/gmail/v1/users/me/messages?q=${encodeURIComponent(q)}&maxResults=10`,
