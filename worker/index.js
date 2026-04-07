@@ -877,7 +877,8 @@ async function briefFetchNews(topicStr) {
   // Extract source from "Title - Source" pattern when RSS tag is missing
   function splitTitleSource(title, rssSource) {
     if (rssSource) return { title, source: rssSource };
-    const m = title.match(/^(.*?)\s+[-–—]\s+([^-–—]{3,50})$/);
+    // Use greedy .* so we split at the LAST dash separator (source is always at the end)
+    const m = title.match(/^(.*)\s+[-–—]\s+([^-–—]{3,60})$/);
     return m ? { title: m[1].trim(), source: m[2].trim() } : { title, source: '' };
   }
 
@@ -892,7 +893,7 @@ async function briefFetchNews(topicStr) {
     for (const [, block] of [...text.matchAll(/<item>([\s\S]*?)<\/item>/g)].slice(0, 3)) {
       const rawTitle = raw(block.match(/<title>(?:<!\[CDATA\[)?(.*?)(?:\]\]>)?<\/title>/)?.[1]);
       const link     = block.match(/<link\s*\/?>(.*?)<\/link>/)?.[1]?.trim() || block.match(/<guid[^>]*>(https?:\/\/[^<]+)<\/guid>/)?.[1] || '';
-      const rssSource = raw(block.match(/<source[^>]*>(.*?)<\/source>/)?.[1]) || raw(block.match(/<provider[^>]*>(.*?)<\/provider>/)?.[1]) || '';
+      const rssSource = raw(block.match(/<source[^>]*>(.*?)<\/source>/i)?.[1]) || raw(block.match(/<[a-zA-Z]*:?provider[^>]*>(.*?)<\/[a-zA-Z]*:?provider>/i)?.[1]) || raw(block.match(/<[a-zA-Z]+:name[^>]*>(.*?)<\/[a-zA-Z]+:name>/i)?.[1]) || '';
       const pubDate  = block.match(/<pubDate>(.*?)<\/pubDate>/)?.[1] || '';
       if (rawTitle) { const { title, source } = splitTitleSource(rawTitle, rssSource); results.push({ title, link, source, pubDate, topic }); }
     }

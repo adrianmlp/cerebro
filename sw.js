@@ -1,7 +1,7 @@
 // Cerebro service worker — enables PWA install prompt on Android
 // Network-first for HTML pages; cache-first for static assets.
 
-const CACHE = 'cerebro-v15';
+const CACHE = 'cerebro-v16';
 const STATIC = [
   '/style.css',
   '/api.js',

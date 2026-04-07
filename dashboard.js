@@ -349,34 +349,35 @@ async function loadBrief() {
         }).join('')}</div>`
       : `<div class="brief-empty">No teams configured — click ⚙ Settings to add some</div>`;
 
-    // Sports news
-    const sportsNewsSec = data.sportsNews?.length
-      ? `<div class="brief-news">${data.sportsNews.map(n => `
+    // Helper: render a grouped news list
+    function renderNewsGrouped(items) {
+      // Group by topic, preserving insertion order
+      const groups = {};
+      for (const n of items) {
+        const key = n.topic || '';
+        if (!groups[key]) groups[key] = [];
+        groups[key].push(n);
+      }
+      return `<div class="brief-news">${Object.entries(groups).map(([topic, articles]) => `
+        ${topic ? `<div class="brief-news-group-header">${topic}</div>` : ''}
+        ${articles.map(n => `
           <div class="brief-news-item">
             <div class="brief-news-bullet">•</div>
             <div class="brief-news-content">
               <a class="brief-news-title" href="${n.link}" target="_blank" rel="noopener">${n.title}</a>
-              <div class="brief-news-meta">
-                ${n.topic ? `<span class="brief-news-topic">${n.topic}</span>` : ''}
-                ${n.source || ''}
-              </div>
+              ${n.source ? `<div class="brief-news-meta">${n.source}</div>` : ''}
             </div>
-          </div>`).join('')}</div>`
+          </div>`).join('')}`).join('')}</div>`;
+    }
+
+    // Sports news
+    const sportsNewsSec = data.sportsNews?.length
+      ? renderNewsGrouped(data.sportsNews)
       : '';
 
     // News
     const newsSec = data.news?.length
-      ? `<div class="brief-news">${data.news.map(n => `
-          <div class="brief-news-item">
-            <div class="brief-news-bullet">•</div>
-            <div class="brief-news-content">
-              <a class="brief-news-title" href="${n.link}" target="_blank" rel="noopener">${n.title}</a>
-              <div class="brief-news-meta">
-                ${n.topic ? `<span class="brief-news-topic">${n.topic}</span>` : ''}
-                ${n.source || ''}
-              </div>
-            </div>
-          </div>`).join('')}</div>`
+      ? renderNewsGrouped(data.news)
       : data.settings?.topics
         ? `<div class="brief-empty">Could not load news — try refreshing</div>`
         : `<div class="brief-empty">No news topics configured — click ⚙ Settings to add some</div>`;
