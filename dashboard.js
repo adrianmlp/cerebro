@@ -355,22 +355,42 @@ async function loadBrief() {
       ? (() => {
           const w = data.weather;
           const loc = data.weatherLocation || '';
-          return `<div class="brief-weather">
-            <div class="brief-weather-main">
-              <span class="brief-weather-icon">${w.icon}</span>
-              <span class="brief-weather-temp">${w.temp}°</span>
-              <div class="brief-weather-desc">
-                <div class="brief-weather-label">${w.label}</div>
-                ${loc ? `<div class="brief-weather-loc">${loc}</div>` : ''}
+          // AccuWeather link — search by lat,lon if available, else stored zip
+          const acwQuery = (w.lat && w.lon)
+            ? `${w.lat.toFixed(4)},${w.lon.toFixed(4)}`
+            : (data.settings?.weatherZip || loc);
+          const acwUrl = `https://www.accuweather.com/en/search-locations?query=${encodeURIComponent(acwQuery)}`;
+          // Day-of-week labels for forecast
+          const dayNames = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+          const forecastHtml = (w.forecast || []).map((f, i) => {
+            const d = new Date(f.date + 'T12:00:00');
+            const label = i === 0 ? 'Today' : dayNames[d.getDay()];
+            return `<div class="brief-weather-day">
+              <div class="brief-weather-day-name">${label}</div>
+              <div class="brief-weather-day-icon">${f.icon}</div>
+              <div class="brief-weather-day-high">${f.high}°</div>
+              <div class="brief-weather-day-low">${f.low}°</div>
+            </div>`;
+          }).join('');
+          return `<a class="brief-weather" href="${acwUrl}" target="_blank" rel="noopener">
+            <div class="brief-weather-left">
+              <div class="brief-weather-main">
+                <span class="brief-weather-icon">${w.icon}</span>
+                <span class="brief-weather-temp">${w.temp}°</span>
+                <div class="brief-weather-desc">
+                  <div class="brief-weather-label">${w.label}</div>
+                  ${loc ? `<div class="brief-weather-loc">${loc}</div>` : ''}
+                </div>
+              </div>
+              <div class="brief-weather-details">
+                <span>H:${w.high}° L:${w.low}°</span>
+                <span>Feels ${w.feelsLike}°</span>
+                <span>💨 ${w.windSpeed} mph</span>
+                <span>🌧 ${w.precipChance}%</span>
               </div>
             </div>
-            <div class="brief-weather-details">
-              <span>H:${w.high}° L:${w.low}°</span>
-              <span>Feels ${w.feelsLike}°</span>
-              <span>💨 ${w.windSpeed} mph</span>
-              <span>🌧 ${w.precipChance}%</span>
-            </div>
-          </div>`;
+            <div class="brief-weather-forecast">${forecastHtml}</div>
+          </a>`;
         })()
       : data.settings?.weatherZip
         ? `<div class="brief-empty">Could not load weather</div>`
@@ -485,12 +505,12 @@ async function loadBrief() {
       </div>
       ${gmailSec ? `<div><div class="brief-section-label">📧 Emails</div>${gmailSec}</div>` : ''}
       <div>
-        <div class="brief-section-label">📰 News</div>
-        ${newsSec}
-      </div>
-      <div>
         <div class="brief-section-label">🌤 Weather</div>
         ${weatherSec}
+      </div>
+      <div>
+        <div class="brief-section-label">📰 News</div>
+        ${newsSec}
       </div>
       <div>
         <div class="brief-section-label">📈 Stocks</div>

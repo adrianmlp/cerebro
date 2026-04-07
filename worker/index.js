@@ -807,22 +807,33 @@ async function briefFetchWeather(lat, lon) {
     const res = await fetch(
       `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}` +
       `&current=temperature_2m,apparent_temperature,weathercode,windspeed_10m,precipitation` +
-      `&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max` +
-      `&temperature_unit=fahrenheit&wind_speed_unit=mph&timezone=auto&forecast_days=1`
+      `&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max,weathercode` +
+      `&temperature_unit=fahrenheit&wind_speed_unit=mph&timezone=auto&forecast_days=6`
     );
     if (!res.ok) return null;
     const d = await res.json();
     const cur = d.current || {};
     const day = d.daily  || {};
     const { icon, label } = wmoInfo(cur.weathercode ?? 0);
+    // Build 5-day forecast (today + next 4 days, indices 0-4)
+    const dates    = day.time                       || [];
+    const highs    = day.temperature_2m_max         || [];
+    const lows     = day.temperature_2m_min         || [];
+    const codes    = day.weathercode                || [];
+    const forecast = dates.slice(0, 5).map((date, i) => ({
+      date,
+      high: Math.round(highs[i] ?? 0),
+      low:  Math.round(lows[i]  ?? 0),
+      ...wmoInfo(codes[i] ?? 0),
+    }));
     return {
-      temp:        Math.round(cur.temperature_2m      ?? 0),
+      temp:        Math.round(cur.temperature_2m       ?? 0),
       feelsLike:   Math.round(cur.apparent_temperature ?? 0),
-      high:        Math.round((day.temperature_2m_max  || [])[0] ?? 0),
-      low:         Math.round((day.temperature_2m_min  || [])[0] ?? 0),
+      high:        Math.round((highs)[0] ?? 0),
+      low:         Math.round((lows)[0]  ?? 0),
       precipChance:(day.precipitation_probability_max || [])[0] ?? 0,
       windSpeed:   Math.round(cur.windspeed_10m ?? 0),
-      icon, label,
+      icon, label, forecast, lat, lon,
     };
   } catch { return null; }
 }
