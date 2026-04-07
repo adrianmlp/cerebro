@@ -325,6 +325,7 @@ async function loadBrief() {
     const today = localDateStr();
     const tomorrow = localDateStr(new Date(Date.now() + 86400000));
     function fmtDue(d) {
+      if (!d) return '';
       if (d === today) return 'Today';
       if (d === tomorrow) return 'Tomorrow';
       const [y, m, day] = d.split('-');
