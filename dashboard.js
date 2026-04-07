@@ -287,7 +287,16 @@ async function loadBrief() {
   const body = document.getElementById('brief-body');
   const subtitle = document.getElementById('brief-subtitle');
   try {
-    const data = await apiFetch(`/api/brief?date=${localDateStr()}`);
+    // Try GPS (5s timeout, accept cached fix up to 5 min old)
+    let locationParam = '';
+    try {
+      const pos = await new Promise((resolve, reject) => {
+        navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 5000, maximumAge: 300000 });
+      });
+      locationParam = `&lat=${pos.coords.latitude.toFixed(5)}&lon=${pos.coords.longitude.toFixed(5)}`;
+    } catch { /* denied or unavailable — worker will use stored zip */ }
+
+    const data = await apiFetch(`/api/brief?date=${localDateStr()}${locationParam}`);
 
     // Sections: upcoming tasks (next 7 days)
     const today = localDateStr();
@@ -340,6 +349,32 @@ async function loadBrief() {
       : data.settings?.tickers
         ? `<div class="brief-empty">Could not load stock data — markets may be unavailable</div>`
         : `<div class="brief-empty">No tickers configured — click ⚙ Settings to add some</div>`;
+
+    // Weather
+    const weatherSec = data.weather
+      ? (() => {
+          const w = data.weather;
+          const loc = data.weatherLocation || '';
+          return `<div class="brief-weather">
+            <div class="brief-weather-main">
+              <span class="brief-weather-icon">${w.icon}</span>
+              <span class="brief-weather-temp">${w.temp}°</span>
+              <div class="brief-weather-desc">
+                <div class="brief-weather-label">${w.label}</div>
+                ${loc ? `<div class="brief-weather-loc">${loc}</div>` : ''}
+              </div>
+            </div>
+            <div class="brief-weather-details">
+              <span>H:${w.high}° L:${w.low}°</span>
+              <span>Feels ${w.feelsLike}°</span>
+              <span>💨 ${w.windSpeed} mph</span>
+              <span>🌧 ${w.precipChance}%</span>
+            </div>
+          </div>`;
+        })()
+      : data.settings?.weatherZip
+        ? `<div class="brief-empty">Could not load weather</div>`
+        : `<div class="brief-empty">No location set — add a ZIP code in <a href="settings.html" style="color:var(--indigo)">Settings</a></div>`;
 
     // Sports
     const sportSec = data.sports?.length
@@ -452,6 +487,10 @@ async function loadBrief() {
       <div>
         <div class="brief-section-label">📰 News</div>
         ${newsSec}
+      </div>
+      <div>
+        <div class="brief-section-label">🌤 Weather</div>
+        ${weatherSec}
       </div>
       <div>
         <div class="brief-section-label">📈 Stocks</div>

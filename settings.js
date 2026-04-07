@@ -80,6 +80,7 @@ async function loadSettings() {
     tickersTag = makeTagInput('tickers-wrap', s.tickers || '');
     teamsTag   = makeTagInput('teams-wrap',   s.teams   || '');
     topicsTag  = makeTagInput('topics-wrap',  s.topics  || '');
+    document.getElementById('weather-zip-input').value = s.weatherZip || '';
   } catch {
     tickersTag = makeTagInput('tickers-wrap', '');
     teamsTag   = makeTagInput('teams-wrap',   '');
@@ -93,9 +94,10 @@ document.getElementById('brief-save-btn').addEventListener('click', async () => 
     await apiFetch('/api/brief/settings', {
       method: 'PUT',
       body: JSON.stringify({
-        tickers: tickersTag.getValue(),
-        teams:   teamsTag.getValue(),
-        topics:  topicsTag.getValue(),
+        tickers:    tickersTag.getValue(),
+        teams:      teamsTag.getValue(),
+        topics:     topicsTag.getValue(),
+        weatherZip: document.getElementById('weather-zip-input').value.trim(),
       }),
     });
     toast('Settings saved', 'success');

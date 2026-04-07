@@ -771,6 +771,62 @@ function generateRecurringInstances(event, rangeStart, rangeEnd, exceptionMap) {
 
 // ── Daily Brief: external data helpers ──
 
+function wmoInfo(code) {
+  if (code === 0)                    return { icon: '☀️',  label: 'Clear' };
+  if (code <= 2)                     return { icon: '🌤',  label: 'Mostly Clear' };
+  if (code === 3)                    return { icon: '☁️',  label: 'Overcast' };
+  if (code <= 48)                    return { icon: '🌫',  label: 'Foggy' };
+  if (code <= 55)                    return { icon: '🌦',  label: 'Drizzle' };
+  if (code <= 65)                    return { icon: '🌧',  label: 'Rain' };
+  if (code <= 75)                    return { icon: '❄️',  label: 'Snow' };
+  if (code <= 82)                    return { icon: '🌧',  label: 'Showers' };
+  if (code === 85 || code === 86)    return { icon: '🌨',  label: 'Snow Showers' };
+  if (code >= 95)                    return { icon: '⛈',  label: 'Thunderstorm' };
+  return { icon: '🌡', label: 'Unknown' };
+}
+
+async function geocodeZip(zip) {
+  try {
+    const res = await fetch(
+      `https://nominatim.openstreetmap.org/search?postalcode=${encodeURIComponent(zip)}&countrycodes=us&format=json&limit=1`,
+      { headers: { 'User-Agent': 'Cerebro/1.0 personal-dashboard' } }
+    );
+    if (!res.ok) return null;
+    const data = await res.json();
+    if (!data.length) return null;
+    const place = data[0];
+    // display_name is "City, County, State, USA" — take first two parts
+    const parts = (place.display_name || '').split(',').map(s => s.trim());
+    const name = parts.slice(0, 2).join(', ');
+    return { lat: parseFloat(place.lat), lon: parseFloat(place.lon), name };
+  } catch { return null; }
+}
+
+async function briefFetchWeather(lat, lon) {
+  try {
+    const res = await fetch(
+      `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}` +
+      `&current=temperature_2m,apparent_temperature,weathercode,windspeed_10m,precipitation` +
+      `&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max` +
+      `&temperature_unit=fahrenheit&wind_speed_unit=mph&timezone=auto&forecast_days=1`
+    );
+    if (!res.ok) return null;
+    const d = await res.json();
+    const cur = d.current || {};
+    const day = d.daily  || {};
+    const { icon, label } = wmoInfo(cur.weathercode ?? 0);
+    return {
+      temp:        Math.round(cur.temperature_2m      ?? 0),
+      feelsLike:   Math.round(cur.apparent_temperature ?? 0),
+      high:        Math.round((day.temperature_2m_max  || [])[0] ?? 0),
+      low:         Math.round((day.temperature_2m_min  || [])[0] ?? 0),
+      precipChance:(day.precipitation_probability_max || [])[0] ?? 0,
+      windSpeed:   Math.round(cur.windspeed_10m ?? 0),
+      icon, label,
+    };
+  } catch { return null; }
+}
+
 async function briefFetchStocks(tickerStr) {
   if (!tickerStr.trim()) return [];
   const symbols = tickerStr.split(',').map(s => s.trim().toUpperCase()).filter(Boolean).slice(0, 12);
@@ -1476,19 +1532,21 @@ Reply in 1-3 sentences. For create task/event return JSON: {"message":"...","act
       if (seg[1] === 'brief' && seg[2] === 'settings') {
         if (!await checkAuth(request, env)) return json({ error: 'Unauthorized' }, 401);
         if (method === 'GET') {
-          const [t, te, to] = await Promise.all([
+          const [t, te, to, wz] = await Promise.all([
             env.DB.prepare('SELECT value FROM settings WHERE key=?').bind('brief_tickers').first(),
             env.DB.prepare('SELECT value FROM settings WHERE key=?').bind('brief_teams').first(),
             env.DB.prepare('SELECT value FROM settings WHERE key=?').bind('brief_topics').first(),
+            env.DB.prepare('SELECT value FROM settings WHERE key=?').bind('weather_zip').first(),
           ]);
-          return json({ tickers: t?.value||'', teams: te?.value||'', topics: to?.value||'' });
+          return json({ tickers: t?.value||'', teams: te?.value||'', topics: to?.value||'', weatherZip: wz?.value||'' });
         }
         if (method === 'PUT') {
-          const { tickers='', teams='', topics='' } = await request.json();
+          const { tickers='', teams='', topics='', weatherZip='' } = await request.json();
           await Promise.all([
             env.DB.prepare('INSERT OR REPLACE INTO settings (key,value) VALUES (?,?)').bind('brief_tickers', tickers).run(),
             env.DB.prepare('INSERT OR REPLACE INTO settings (key,value) VALUES (?,?)').bind('brief_teams', teams).run(),
             env.DB.prepare('INSERT OR REPLACE INTO settings (key,value) VALUES (?,?)').bind('brief_topics', topics).run(),
+            env.DB.prepare('INSERT OR REPLACE INTO settings (key,value) VALUES (?,?)').bind('weather_zip', weatherZip).run(),
           ]);
           return json({ ok: true });
         }
@@ -1592,11 +1650,16 @@ Reply in 1-3 sentences. For create task/event return JSON: {"message":"...","act
         const today = url.searchParams.get('date') || new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Los_Angeles' }).format(new Date());
         const endDate = (() => { const d = new Date(today + 'T12:00:00'); d.setDate(d.getDate() + 6); return d.toISOString().slice(0,10); })();
 
+        // Location: prefer ?lat&lon from client GPS; fall back to stored zip
+        const latParam = url.searchParams.get('lat');
+        const lonParam = url.searchParams.get('lon');
+
         // Load settings + D1 data in parallel
-        const [tickerRow, teamRow, topicRow, { results: dueTasks }, personalEvRes, outlookEvRes] = await Promise.all([
+        const [tickerRow, teamRow, topicRow, zipRow, { results: dueTasks }, personalEvRes, outlookEvRes] = await Promise.all([
           env.DB.prepare('SELECT value FROM settings WHERE key=?').bind('brief_tickers').first(),
           env.DB.prepare('SELECT value FROM settings WHERE key=?').bind('brief_teams').first(),
           env.DB.prepare('SELECT value FROM settings WHERE key=?').bind('brief_topics').first(),
+          env.DB.prepare('SELECT value FROM settings WHERE key=?').bind('weather_zip').first(),
           env.DB.prepare(`SELECT title, priority, due_date FROM tasks WHERE completed=0 AND due_date BETWEEN ? AND ? ORDER BY due_date, priority`).bind(today, endDate).all(),
           (async () => {
             try {
@@ -1611,19 +1674,30 @@ Reply in 1-3 sentences. For create task/event return JSON: {"message":"...","act
         const workEv     = Array.isArray(outlookEvRes) ? outlookEvRes.map(e => ({ title: e.title, start_time: e.start_time })) : [];
         const meetings   = [...personalEv, ...workEv].sort((a,b)=>(a.start_time||'').localeCompare(b.start_time||''));
 
+        // Resolve lat/lon for weather (GPS params > stored zip)
+        let weatherLatLon = null, weatherLocation = '';
+        if (latParam && lonParam) {
+          weatherLatLon = { lat: parseFloat(latParam), lon: parseFloat(lonParam) };
+          weatherLocation = 'Current Location';
+        } else if (zipRow?.value) {
+          const geo = await geocodeZip(zipRow.value).catch(() => null);
+          if (geo) { weatherLatLon = geo; weatherLocation = geo.name || zipRow.value; }
+        }
+
         // Fetch external data in parallel
         const gmailTokenRow = await env.DB.prepare('SELECT value FROM settings WHERE key=?').bind('gmail_refresh_token').first();
         const gmailConnected = !!gmailTokenRow?.value;
 
-        const [stocks, sports, news, sportsNews, gmailEmails] = await Promise.all([
+        const [stocks, sports, news, sportsNews, gmailEmails, weather] = await Promise.all([
           briefFetchStocks(tickerRow?.value || ''),
           briefFetchSports(teamRow?.value   || ''),
           briefFetchNews(topicRow?.value    || ''),
           briefFetchNews(teamRow?.value     || ''),
           gmailConnected ? fetchGmailEmails(env).catch(() => []) : Promise.resolve([]),
+          weatherLatLon ? briefFetchWeather(weatherLatLon.lat, weatherLatLon.lon).catch(() => null) : Promise.resolve(null),
         ]);
 
-        return json({ dueToday: dueTasks, meetings, stocks, sports, news, sportsNews, gmailEmails, gmailConnected, settings: { tickers: tickerRow?.value||'', teams: teamRow?.value||'', topics: topicRow?.value||'' } });
+        return json({ dueToday: dueTasks, meetings, stocks, sports, news, sportsNews, gmailEmails, gmailConnected, weather, weatherLocation, settings: { tickers: tickerRow?.value||'', teams: teamRow?.value||'', topics: topicRow?.value||'', weatherZip: zipRow?.value||'' } });
       }
 
       // ──────────────────────────────
