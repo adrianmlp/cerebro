@@ -786,20 +786,28 @@ function wmoInfo(code) {
 }
 
 async function geocodeZip(zip) {
+  // Primary: zippopotam.us — reliable, no key, CF-friendly
   try {
-    const res = await fetch(
-      `https://nominatim.openstreetmap.org/search?postalcode=${encodeURIComponent(zip)}&countrycodes=us&format=json&limit=1`,
-      { headers: { 'User-Agent': 'Cerebro/1.0 personal-dashboard' } }
-    );
-    if (!res.ok) return null;
-    const data = await res.json();
-    if (!data.length) return null;
-    const place = data[0];
-    // display_name is "City, County, State, USA" — take first two parts
-    const parts = (place.display_name || '').split(',').map(s => s.trim());
-    const name = parts.slice(0, 2).join(', ');
-    return { lat: parseFloat(place.lat), lon: parseFloat(place.lon), name };
-  } catch { return null; }
+    const res = await fetch(`https://api.zippopotam.us/us/${encodeURIComponent(zip.trim())}`);
+    if (res.ok) {
+      const d = await res.json();
+      const place = d.places?.[0];
+      if (place) {
+        const name = `${place['place name']}, ${place['state abbreviation']}`;
+        return { lat: parseFloat(place.latitude), lon: parseFloat(place.longitude), name };
+      }
+    }
+  } catch { /* fall through */ }
+  // Fallback: Open-Meteo geocoding (searches by name/zip)
+  try {
+    const res = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(zip.trim())}&count=1&language=en&format=json`);
+    if (res.ok) {
+      const d = await res.json();
+      const r = d.results?.[0];
+      if (r) return { lat: r.latitude, lon: r.longitude, name: `${r.name}, ${r.admin1 || ''}`.replace(/, $/, '') };
+    }
+  } catch { /* give up */ }
+  return null;
 }
 
 async function briefFetchWeather(lat, lon) {
