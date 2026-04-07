@@ -1548,6 +1548,43 @@ Reply in 1-3 sentences. For create task/event return JSON: {"message":"...","act
         }
       }
 
+      // Expanded news for a single topic (modal)
+      if (seg[1] === 'news' && !seg[2] && method === 'GET') {
+        if (!await checkAuth(request, env)) return json({ error: 'Unauthorized' }, 401);
+        const topic = url.searchParams.get('topic')?.trim() || '';
+        if (!topic) return json([]);
+
+        const rawStr = t => t?.replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&#39;/g,"'").replace(/&quot;/g,'"').replace(/<[^>]+>/g,'') || '';
+        function splitTS(title, rssSource) {
+          if (rssSource) return { title, source: rssSource };
+          const m = title.match(/^(.*)\s+[-–—]\s+([^-–—]{3,60})$/);
+          return m ? { title: m[1].trim(), source: m[2].trim() } : { title, source: '' };
+        }
+        const results = []; const seen = new Set();
+        function parseItems(text, limit) {
+          for (const [, block] of [...text.matchAll(/<item>([\s\S]*?)<\/item>/g)].slice(0, limit)) {
+            const rawTitle  = rawStr(block.match(/<title>(?:<!\[CDATA\[)?(.*?)(?:\]\]>)?<\/title>/)?.[1]);
+            const link      = block.match(/<link\s*\/?>(.*?)<\/link>/)?.[1]?.trim() || block.match(/<link>(.*?)<\/link>/)?.[1] || block.match(/<guid[^>]*>(https?:\/\/[^<]+)<\/guid>/)?.[1] || '';
+            const rssSource = rawStr(block.match(/<source[^>]*>(.*?)<\/source>/i)?.[1]) || rawStr(block.match(/<[a-zA-Z]*:?provider[^>]*>(.*?)<\/[a-zA-Z]*:?provider>/i)?.[1]) || '';
+            const pubDate   = block.match(/<pubDate>(.*?)<\/pubDate>/)?.[1] || '';
+            if (rawTitle && !seen.has(rawTitle)) {
+              seen.add(rawTitle);
+              const { title, source } = splitTS(rawTitle, rssSource);
+              results.push({ title, link, source, pubDate });
+            }
+          }
+        }
+        const UA = { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36' };
+        await Promise.allSettled([
+          fetch(`https://www.bing.com/news/search?q=${encodeURIComponent(topic)}&format=RSS&mkt=en-US&count=15`, { headers: { ...UA, 'Accept-Language': 'en-US,en;q=0.9' } })
+            .then(r => r.ok ? r.text() : '').then(t => t && parseItems(t, 12)).catch(() => {}),
+          fetch(`https://news.google.com/rss/search?q=${encodeURIComponent(topic)}&hl=en-US&gl=US&ceid=US:en`, { headers: UA })
+            .then(r => r.ok ? r.text() : '').then(t => t && parseItems(t, 12)).catch(() => {}),
+        ]);
+        results.sort((a, b) => (new Date(b.pubDate) || 0) - (new Date(a.pubDate) || 0));
+        return json(results.slice(0, 20));
+      }
+
       // Main brief endpoint
       if (seg[1] === 'brief' && !seg[2] && method === 'GET') {
         if (!await checkAuth(request, env)) return json({ error: 'Unauthorized' }, 401);

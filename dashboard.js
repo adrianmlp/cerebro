@@ -18,9 +18,36 @@ document.querySelectorAll('.modal-backdrop').forEach(el => {
   el.addEventListener('click', e => { if (e.target === el) el.classList.remove('open'); });
 });
 
+// ── News topic modal ──
+async function openNewsTopic(topic) {
+  document.getElementById('news-topic-modal-title').textContent = topic;
+  document.getElementById('news-topic-modal-body').innerHTML = '<div class="brief-loading">Loading…</div>';
+  openModal('news-topic-modal');
+  try {
+    const items = await apiFetch(`/api/news?topic=${encodeURIComponent(topic)}`);
+    if (!items.length) {
+      document.getElementById('news-topic-modal-body').innerHTML = '<div class="brief-empty">No articles found.</div>';
+      return;
+    }
+    document.getElementById('news-topic-modal-body').innerHTML = `
+      <div class="brief-news news-modal-list">${items.map(n => `
+        <div class="brief-news-item">
+          <div class="brief-news-bullet">•</div>
+          <div class="brief-news-content">
+            <a class="brief-news-title" href="${n.link}" target="_blank" rel="noopener">${n.title}</a>
+            <div class="brief-news-meta">${[n.source, n.pubDate ? new Date(n.pubDate).toLocaleDateString('en-US',{month:'short',day:'numeric'}) : ''].filter(Boolean).join(' · ')}</div>
+          </div>
+        </div>`).join('')}</div>`;
+  } catch (e) {
+    document.getElementById('news-topic-modal-body').innerHTML = `<div class="brief-empty">Failed to load: ${e.message}</div>`;
+  }
+}
+
 // ── Brief action buttons (delegated — rendered dynamically) ──
 document.addEventListener('click', e => {
   if (e.target.closest('#brief-add-task-btn')) { openModal('task-modal'); return; }
+  const topicHeader = e.target.closest('.brief-news-group-header[data-topic]');
+  if (topicHeader) { openNewsTopic(topicHeader.dataset.topic); return; }
   const emailBtn = e.target.closest('.brief-email-action[data-action]');
   if (emailBtn) {
     const action  = emailBtn.dataset.action;
@@ -365,7 +392,7 @@ async function loadBrief() {
         groups[key].push(n);
       }
       return `<div class="brief-news">${Object.entries(groups).map(([topic, articles]) => `
-        ${topic ? `<div class="brief-news-group-header">${topic}</div>` : ''}
+        ${topic ? `<div class="brief-news-group-header" data-topic="${topic.replace(/"/g,'&quot;')}" role="button" tabindex="0">${topic} <span class="brief-news-group-more">more ›</span></div>` : ''}
         ${articles.map(n => `
           <div class="brief-news-item">
             <div class="brief-news-bullet">•</div>
