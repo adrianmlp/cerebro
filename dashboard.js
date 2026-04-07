@@ -314,7 +314,8 @@ async function loadBrief() {
     let locationParam = '';
     try {
       const pos = await new Promise((resolve, reject) => {
-        navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 5000, maximumAge: 300000 });
+        // maximumAge: Infinity reuses any cached GPS fix instantly; timeout: 8s for fresh fix
+        navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 8000, maximumAge: Infinity });
       });
       locationParam = `&lat=${pos.coords.latitude.toFixed(5)}&lon=${pos.coords.longitude.toFixed(5)}`;
     } catch { /* denied or unavailable — worker will use stored zip */ }

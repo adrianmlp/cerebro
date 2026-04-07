@@ -846,6 +846,68 @@ async function briefFetchWeather(lat, lon) {
   } catch { return null; }
 }
 
+// Weather via wttr.in — accepts ZIP/city directly, no geocoding needed
+async function briefFetchWeatherByZip(zip) {
+  try {
+    const res = await fetch(
+      `https://wttr.in/${encodeURIComponent(zip.trim())}?format=j1`,
+      { headers: { 'User-Agent': 'Cerebro/1.0 personal-dashboard', Accept: 'application/json' } }
+    );
+    if (!res.ok) return null;
+    const d = await res.json();
+    const cur = d.current_condition?.[0];
+    if (!cur) return null;
+
+    // Location name from wttr.in nearest_area
+    const area  = d.nearest_area?.[0];
+    const city  = area?.areaName?.[0]?.value || '';
+    const state = area?.region?.[0]?.value   || '';
+    const locationName = [city, state].filter(Boolean).join(', ');
+
+    // wttr.in weather code → icon/label
+    function wwoInfo(code) {
+      const c = parseInt(code);
+      if (c === 113)                              return { icon: '☀️',  label: 'Clear' };
+      if (c === 116)                              return { icon: '🌤',  label: 'Partly Cloudy' };
+      if (c === 119 || c === 122)                 return { icon: '☁️',  label: 'Overcast' };
+      if ([143,248,260].includes(c))              return { icon: '🌫',  label: 'Foggy' };
+      if ([176,263,266,293,296].includes(c))      return { icon: '🌦',  label: 'Drizzle' };
+      if ([299,302,305,308,311,314].includes(c))  return { icon: '🌧',  label: 'Rain' };
+      if (c >= 317 && c <= 395 && c !== 386 && c !== 389 && c !== 392 && c !== 395)
+                                                  return { icon: '❄️',  label: 'Snow' };
+      if ([200,386,389,392,395].includes(c))      return { icon: '⛈',  label: 'Thunderstorm' };
+      return { icon: '🌡', label: 'Unknown' };
+    }
+
+    const { icon, label } = wwoInfo(cur.weatherCode);
+
+    // Max rain-chance across today's hourly slots
+    const todayHourly  = d.weather?.[0]?.hourly || [];
+    const precipChance = todayHourly.reduce((m, h) => Math.max(m, parseInt(h.chanceofrain || 0)), 0);
+
+    // 5-day forecast
+    const forecast = (d.weather || []).slice(0, 5).map(day => {
+      const noonSlot = day.hourly?.find(h => parseInt(h.time) >= 1100) || day.hourly?.[0];
+      return {
+        date: day.date,
+        high: parseInt(day.maxtempF || 0),
+        low:  parseInt(day.mintempF || 0),
+        ...wwoInfo(noonSlot?.weatherCode || '113'),
+      };
+    });
+
+    return {
+      temp:         parseInt(cur.temp_F),
+      feelsLike:    parseInt(cur.FeelsLikeF),
+      high:         parseInt(d.weather?.[0]?.maxtempF ?? cur.temp_F),
+      low:          parseInt(d.weather?.[0]?.mintempF ?? cur.temp_F),
+      precipChance, windSpeed: parseInt(cur.windspeedMiles),
+      icon, label, forecast,
+      lat: null, lon: null, locationName,
+    };
+  } catch { return null; }
+}
+
 async function briefFetchStocks(tickerStr) {
   if (!tickerStr.trim()) return [];
   const symbols = tickerStr.split(',').map(s => s.trim().toUpperCase()).filter(Boolean).slice(0, 12);
@@ -1693,14 +1755,12 @@ Reply in 1-3 sentences. For create task/event return JSON: {"message":"...","act
         const workEv     = Array.isArray(outlookEvRes) ? outlookEvRes.map(e => ({ title: e.title, start_time: e.start_time })) : [];
         const meetings   = [...personalEv, ...workEv].sort((a,b)=>(a.start_time||'').localeCompare(b.start_time||''));
 
-        // Resolve lat/lon for weather (GPS params > stored zip)
+        // Resolve weather source: GPS params → Open-Meteo; stored ZIP → wttr.in (no geocoding needed)
         let weatherLatLon = null, weatherLocation = '';
+        const weatherZipDirect = (!latParam || !lonParam) ? (zipRow?.value?.trim() || null) : null;
         if (latParam && lonParam) {
           weatherLatLon = { lat: parseFloat(latParam), lon: parseFloat(lonParam) };
           weatherLocation = 'Current Location';
-        } else if (zipRow?.value) {
-          const geo = await geocodeZip(zipRow.value).catch(() => null);
-          if (geo) { weatherLatLon = geo; weatherLocation = geo.name || zipRow.value; }
         }
 
         // Fetch external data in parallel
@@ -1713,10 +1773,14 @@ Reply in 1-3 sentences. For create task/event return JSON: {"message":"...","act
           briefFetchNews(topicRow?.value    || ''),
           briefFetchNews(teamRow?.value     || ''),
           gmailConnected ? fetchGmailEmails(env).catch(() => []) : Promise.resolve([]),
-          weatherLatLon ? briefFetchWeather(weatherLatLon.lat, weatherLatLon.lon).catch(() => null) : Promise.resolve(null),
+          weatherLatLon   ? briefFetchWeather(weatherLatLon.lat, weatherLatLon.lon).catch(() => null)
+          : weatherZipDirect ? briefFetchWeatherByZip(weatherZipDirect).catch(() => null)
+          : Promise.resolve(null),
         ]);
 
-        return json({ dueToday: dueTasks, meetings, stocks, sports, news, sportsNews, gmailEmails, gmailConnected, weather, weatherLocation, settings: { tickers: tickerRow?.value||'', teams: teamRow?.value||'', topics: topicRow?.value||'', weatherZip: zipRow?.value||'' } });
+        // For ZIP path, location name comes from wttr.in response itself
+        const resolvedLocation = weatherLocation || weather?.locationName || zipRow?.value || '';
+        return json({ dueToday: dueTasks, meetings, stocks, sports, news, sportsNews, gmailEmails, gmailConnected, weather, weatherLocation: resolvedLocation, settings: { tickers: tickerRow?.value||'', teams: teamRow?.value||'', topics: topicRow?.value||'', weatherZip: zipRow?.value||'' } });
       }
 
       // ──────────────────────────────
