@@ -1565,15 +1565,18 @@ Reply in 1-3 sentences. For create task/event return JSON: {"message":"...","act
         const meetings   = [...personalEv, ...workEv].sort((a,b)=>(a.start_time||'').localeCompare(b.start_time||''));
 
         // Fetch external data in parallel
+        const gmailTokenRow = await env.DB.prepare('SELECT value FROM settings WHERE key=?').bind('gmail_refresh_token').first();
+        const gmailConnected = !!gmailTokenRow?.value;
+
         const [stocks, sports, news, sportsNews, gmailEmails] = await Promise.all([
           briefFetchStocks(tickerRow?.value || ''),
           briefFetchSports(teamRow?.value   || ''),
           briefFetchNews(topicRow?.value    || ''),
           briefFetchNews(teamRow?.value     || ''),
-          fetchGmailEmails(env).catch(() => []),
+          gmailConnected ? fetchGmailEmails(env).catch(() => []) : Promise.resolve([]),
         ]);
 
-        return json({ dueToday: dueTasks, meetings, stocks, sports, news, sportsNews, gmailEmails, settings: { tickers: tickerRow?.value||'', teams: teamRow?.value||'', topics: topicRow?.value||'' } });
+        return json({ dueToday: dueTasks, meetings, stocks, sports, news, sportsNews, gmailEmails, gmailConnected, settings: { tickers: tickerRow?.value||'', teams: teamRow?.value||'', topics: topicRow?.value||'' } });
       }
 
       // ──────────────────────────────
@@ -1599,6 +1602,15 @@ Reply in 1-3 sentences. For create task/event return JSON: {"message":"...","act
         if (seg[2] === 'status' && method === 'GET') {
           const row = await env.DB.prepare('SELECT value FROM settings WHERE key=?').bind('gmail_refresh_token').first();
           return json({ connected: !!row?.value });
+        }
+        // Debug: test fetch emails directly
+        if (seg[2] === 'test' && method === 'GET') {
+          const emails = await fetchGmailEmails(env);
+          const [sr, tr] = await Promise.all([
+            env.DB.prepare('SELECT value FROM settings WHERE key=?').bind('gmail_filter_senders').first(),
+            env.DB.prepare('SELECT value FROM settings WHERE key=?').bind('gmail_filter_topics').first(),
+          ]);
+          return json({ emails, senders: sr?.value||'', topics: tr?.value||'', count: emails.length });
         }
         // Disconnect
         if (seg[2] === 'disconnect' && method === 'DELETE') {

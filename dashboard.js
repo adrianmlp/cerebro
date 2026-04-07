@@ -382,24 +382,26 @@ async function loadBrief() {
         : `<div class="brief-empty">No news topics configured — click ⚙ Settings to add some</div>`;
 
     // Gmail emails
-    const gmailSec = data.gmailEmails?.length
-      ? `<div class="brief-emails">${data.gmailEmails.map(e => `
-          <div class="brief-email${e.isImportant ? ' important' : ''}">
-            <div class="brief-email-meta">
-              <span class="brief-email-from">${e.fromName || e.fromEmail}</span>
-              ${e.isImportant ? '<span class="brief-email-star">★</span>' : ''}
-              <span class="brief-email-date">${e.date ? new Date(e.date).toLocaleDateString('en-US',{month:'short',day:'numeric'}) : ''}</span>
-            </div>
-            <div class="brief-email-subject">${e.subject}</div>
-            <div class="brief-email-snippet">${e.snippet}</div>
-            <div class="brief-email-actions">
-              <button class="brief-email-action" data-action="task"  data-subject="${e.subject.replace(/"/g,'&quot;')}" data-snippet="${e.snippet.replace(/"/g,'&quot;')}">→ Task</button>
-              <button class="brief-email-action" data-action="event" data-subject="${e.subject.replace(/"/g,'&quot;')}" data-snippet="${e.snippet.replace(/"/g,'&quot;')}">→ Event</button>
-              <button class="brief-email-action" data-action="note"  data-subject="${e.subject.replace(/"/g,'&quot;')}" data-snippet="${e.snippet.replace(/"/g,'&quot;')}">→ Note</button>
-              <a class="brief-email-action" href="${e.link}" target="_blank" rel="noopener">Open ↗</a>
-            </div>
-          </div>`).join('')}</div>`
-      : '';
+    const gmailSec = data.gmailConnected
+      ? (data.gmailEmails?.length
+          ? `<div class="brief-emails">${data.gmailEmails.map(e => `
+              <div class="brief-email${e.isImportant ? ' important' : ''}">
+                <div class="brief-email-meta">
+                  <span class="brief-email-from">${e.fromName || e.fromEmail}</span>
+                  ${e.isImportant ? '<span class="brief-email-star">★</span>' : ''}
+                  <span class="brief-email-date">${e.date ? new Date(e.date).toLocaleDateString('en-US',{month:'short',day:'numeric'}) : ''}</span>
+                </div>
+                <div class="brief-email-subject">${e.subject}</div>
+                <div class="brief-email-snippet">${e.snippet}</div>
+                <div class="brief-email-actions">
+                  <button class="brief-email-action" data-action="task"  data-subject="${e.subject.replace(/"/g,'&quot;')}" data-snippet="${e.snippet.replace(/"/g,'&quot;')}">→ Task</button>
+                  <button class="brief-email-action" data-action="event" data-subject="${e.subject.replace(/"/g,'&quot;')}" data-snippet="${e.snippet.replace(/"/g,'&quot;')}">→ Event</button>
+                  <button class="brief-email-action" data-action="note"  data-subject="${e.subject.replace(/"/g,'&quot;')}" data-snippet="${e.snippet.replace(/"/g,'&quot;')}">→ Note</button>
+                  <a class="brief-email-action" href="${e.link}" target="_blank" rel="noopener">Open ↗</a>
+                </div>
+              </div>`).join('')}</div>`
+          : `<div class="brief-empty">No matching unread emails — add filters in <a href="settings.html" style="color:var(--indigo)">Settings</a></div>`)
+      : null;
 
     body.innerHTML = `<div class="brief-grid">
       <div class="brief-top-row">
