@@ -292,6 +292,7 @@ document.addEventListener('keydown', e => { if (e.key === 'Escape' && chatFullsc
 
 // ── Daily Brief ──
 const PRIORITY_DOT = { URGENT: 'URGENT', HIGH: 'HIGH', NORMAL: 'NORMAL', BACKLOG: 'BACKLOG' };
+const BRIEF_CACHE_TTL = 3 * 60 * 60 * 1000; // 3 hours
 
 function briefFmtTime(iso) {
   if (!iso) return '';
@@ -306,21 +307,39 @@ function briefFmtChange(val) {
   return `${sign}${val.toFixed(2)}%`;
 }
 
-async function loadBrief() {
-  const body = document.getElementById('brief-body');
-  const subtitle = document.getElementById('brief-subtitle');
+// ── Cache helpers ──
+function getBriefCache() {
   try {
-    // Try GPS (5s timeout, accept cached fix up to 5 min old)
-    let locationParam = '';
-    try {
-      const pos = await new Promise((resolve, reject) => {
-        // maximumAge: Infinity reuses any cached GPS fix instantly; timeout: 8s for fresh fix
-        navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 8000, maximumAge: Infinity });
-      });
-      locationParam = `&lat=${pos.coords.latitude.toFixed(5)}&lon=${pos.coords.longitude.toFixed(5)}`;
-    } catch { /* denied or unavailable — worker will use stored zip */ }
+    const key = `cerebro_brief_v1_${localDateStr()}`;
+    const raw = localStorage.getItem(key);
+    if (!raw) return null;
+    const c = JSON.parse(raw);
+    return (c?.ts && c?.data) ? c : null;
+  } catch { return null; }
+}
+function setBriefCache(data) {
+  try {
+    const today = localDateStr();
+    const key = `cerebro_brief_v1_${today}`;
+    localStorage.setItem(key, JSON.stringify({ ts: Date.now(), data }));
+    // Remove stale day-keys
+    for (const k of Object.keys(localStorage)) {
+      if (k.startsWith('cerebro_brief_v1_') && k !== key) localStorage.removeItem(k);
+    }
+  } catch { /* storage full — ignore */ }
+}
+function fmtCacheAge(ms) {
+  const m = Math.round(ms / 60000);
+  if (m < 2)  return 'Just updated';
+  if (m < 60) return `Updated ${m}m ago`;
+  return `Updated ${Math.round(m / 60)}h ago`;
+}
 
-    const data = await apiFetch(`/api/brief?date=${localDateStr()}${locationParam}`);
+// ── Render brief from data object ──
+function renderBrief(data) {
+  const body = document.getElementById('brief-body');
+  const today    = localDateStr();
+  const tomorrow = localDateStr(new Date(Date.now() + 86400000));
 
     // Sections: upcoming tasks (next 7 days)
     const today = localDateStr();
@@ -508,50 +527,86 @@ async function loadBrief() {
           : `<div class="brief-empty">No matching unread emails — add filters in <a href="settings.html" style="color:var(--indigo)">Settings</a></div>`)
       : null;
 
-    body.innerHTML = `<div class="brief-grid">
-      <div class="brief-top-row">
-        <div>
-          <div class="brief-section-label">📌 Upcoming Tasks <button class="brief-add-btn" id="brief-add-task-btn">+ Add</button></div>
-          ${dueSec}
-        </div>
-        <a class="brief-section-link brief-section-block" href="calendar.html?view=day&date=${localDateStr()}">
-          <div class="brief-section-label">📅 Today's Schedule ↗</div>
-          ${meetSec}
-        </a>
-      </div>
-      ${gmailSec ? `<div><div class="brief-section-label">📧 Emails</div>${gmailSec}</div>` : ''}
+  body.innerHTML = `<div class="brief-grid">
+    <div class="brief-top-row">
       <div>
-        <div class="brief-section-label">🌤 Weather</div>
-        ${weatherSec}
+        <div class="brief-section-label">📌 Upcoming Tasks <button class="brief-add-btn" id="brief-add-task-btn">+ Add</button></div>
+        ${dueSec}
       </div>
-      <div>
-        <div class="brief-section-label">📰 News</div>
-        ${newsSec}
-      </div>
-      <div>
-        <div class="brief-section-label">📈 Stocks</div>
-        ${stockSec}
-      </div>
-      <div>
-        <div class="brief-section-label">🏆 Scores</div>
-        ${sportSec}
-        ${sportsNewsSec ? `<div class="brief-section-label" style="margin-top:12px">📰 Sports News</div>${sportsNewsSec}` : ''}
-      </div>
-    </div>`;
+      <a class="brief-section-link brief-section-block" href="calendar.html?view=day&date=${today}">
+        <div class="brief-section-label">📅 Today's Schedule ↗</div>
+        ${meetSec}
+      </a>
+    </div>
+    ${gmailSec ? `<div><div class="brief-section-label">📧 Emails</div>${gmailSec}</div>` : ''}
+    <div>
+      <div class="brief-section-label">🌤 Weather</div>
+      ${weatherSec}
+    </div>
+    <div>
+      <div class="brief-section-label">📰 News</div>
+      ${newsSec}
+    </div>
+    <div>
+      <div class="brief-section-label">📈 Stocks</div>
+      ${stockSec}
+    </div>
+    <div>
+      <div class="brief-section-label">🏆 Scores</div>
+      ${sportSec}
+      ${sportsNewsSec ? `<div class="brief-section-label" style="margin-top:12px">📰 Sports News</div>${sportsNewsSec}` : ''}
+    </div>
+  </div>`;
+}
 
-    const now = new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
-    subtitle.textContent = `Updated ${now}`;
+// ── Load brief (cache-first, 3-hour TTL) ──
+async function loadBrief(forceRefresh = false) {
+  const subtitle = document.getElementById('brief-subtitle');
+  const body     = document.getElementById('brief-body');
+
+  const cached   = getBriefCache();
+  const cacheAge = cached ? Date.now() - cached.ts : Infinity;
+  const isStale  = cacheAge >= BRIEF_CACHE_TTL;
+
+  // Serve from cache immediately if fresh
+  if (!forceRefresh && cached && !isStale) {
+    renderBrief(cached.data);
+    subtitle.textContent = fmtCacheAge(cacheAge);
+    return;
+  }
+
+  // Show stale cache while re-fetching (or loading spinner if no cache)
+  if (cached) {
+    renderBrief(cached.data);
+    subtitle.textContent = 'Refreshing…';
+  } else {
+    body.innerHTML = '<div class="brief-loading">Loading brief…</div>';
+    subtitle.textContent = 'Loading…';
+  }
+
+  try {
+    // Try GPS — use any cached fix (maximumAge: Infinity), 8s for fresh
+    let locationParam = '';
+    try {
+      const pos = await new Promise((resolve, reject) =>
+        navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 8000, maximumAge: Infinity })
+      );
+      locationParam = `&lat=${pos.coords.latitude.toFixed(5)}&lon=${pos.coords.longitude.toFixed(5)}`;
+    } catch { /* denied / unavailable — worker uses stored ZIP */ }
+
+    const data = await apiFetch(`/api/brief?date=${localDateStr()}${locationParam}`);
+    setBriefCache(data);
+    renderBrief(data);
+    subtitle.textContent = `Updated ${new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}`;
   } catch (e) {
-    body.innerHTML = `<div class="brief-empty">Failed to load brief: ${e.message}</div>`;
-    subtitle.textContent = 'Error';
+    if (!cached) {
+      body.innerHTML = `<div class="brief-empty">Failed to load brief: ${e.message}</div>`;
+    }
+    subtitle.textContent = cached ? fmtCacheAge(cacheAge) : 'Error';
   }
 }
 
-
-document.getElementById('brief-refresh-btn').addEventListener('click', () => {
-  document.getElementById('brief-subtitle').textContent = 'Refreshing…';
-  loadBrief();
-});
+document.getElementById('brief-refresh-btn').addEventListener('click', () => loadBrief(true));
 
 // ── Init ──
 loadBrief().catch(e => toast(e.message, 'error'));

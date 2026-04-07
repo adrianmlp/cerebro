@@ -786,25 +786,24 @@ function wmoInfo(code) {
 }
 
 async function geocodeZip(zip) {
-  // Primary: zippopotam.us — reliable, no key, CF-friendly
+  const q = encodeURIComponent(zip.trim());
+  // Primary: Open-Meteo geocoding — same domain as weather API, guaranteed CF-accessible
   try {
-    const res = await fetch(`https://api.zippopotam.us/us/${encodeURIComponent(zip.trim())}`);
+    const res = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${q}&count=3&language=en&format=json`);
+    if (res.ok) {
+      const d = await res.json();
+      // Prefer US results when multiple matches
+      const r = d.results?.find(x => x.country_code === 'US') || d.results?.[0];
+      if (r) return { lat: r.latitude, lon: r.longitude, name: `${r.name}, ${r.admin1 || ''}`.replace(/, $/, '') };
+    }
+  } catch { /* fall through */ }
+  // Fallback: zippopotam.us
+  try {
+    const res = await fetch(`https://api.zippopotam.us/us/${q}`);
     if (res.ok) {
       const d = await res.json();
       const place = d.places?.[0];
-      if (place) {
-        const name = `${place['place name']}, ${place['state abbreviation']}`;
-        return { lat: parseFloat(place.latitude), lon: parseFloat(place.longitude), name };
-      }
-    }
-  } catch { /* fall through */ }
-  // Fallback: Open-Meteo geocoding (searches by name/zip)
-  try {
-    const res = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(zip.trim())}&count=1&language=en&format=json`);
-    if (res.ok) {
-      const d = await res.json();
-      const r = d.results?.[0];
-      if (r) return { lat: r.latitude, lon: r.longitude, name: `${r.name}, ${r.admin1 || ''}`.replace(/, $/, '') };
+      if (place) return { lat: parseFloat(place.latitude), lon: parseFloat(place.longitude), name: `${place['place name']}, ${place['state abbreviation']}` };
     }
   } catch { /* give up */ }
   return null;
@@ -1755,12 +1754,14 @@ Reply in 1-3 sentences. For create task/event return JSON: {"message":"...","act
         const workEv     = Array.isArray(outlookEvRes) ? outlookEvRes.map(e => ({ title: e.title, start_time: e.start_time })) : [];
         const meetings   = [...personalEv, ...workEv].sort((a,b)=>(a.start_time||'').localeCompare(b.start_time||''));
 
-        // Resolve weather source: GPS params → Open-Meteo; stored ZIP → wttr.in (no geocoding needed)
+        // Resolve weather: GPS params → Open-Meteo direct; stored ZIP → geocode → Open-Meteo
         let weatherLatLon = null, weatherLocation = '';
-        const weatherZipDirect = (!latParam || !lonParam) ? (zipRow?.value?.trim() || null) : null;
         if (latParam && lonParam) {
           weatherLatLon = { lat: parseFloat(latParam), lon: parseFloat(lonParam) };
           weatherLocation = 'Current Location';
+        } else if (zipRow?.value) {
+          const geo = await geocodeZip(zipRow.value).catch(() => null);
+          if (geo) { weatherLatLon = geo; weatherLocation = geo.name || zipRow.value; }
         }
 
         // Fetch external data in parallel
@@ -1773,14 +1774,10 @@ Reply in 1-3 sentences. For create task/event return JSON: {"message":"...","act
           briefFetchNews(topicRow?.value    || ''),
           briefFetchNews(teamRow?.value     || ''),
           gmailConnected ? fetchGmailEmails(env).catch(() => []) : Promise.resolve([]),
-          weatherLatLon   ? briefFetchWeather(weatherLatLon.lat, weatherLatLon.lon).catch(() => null)
-          : weatherZipDirect ? briefFetchWeatherByZip(weatherZipDirect).catch(() => null)
-          : Promise.resolve(null),
+          weatherLatLon ? briefFetchWeather(weatherLatLon.lat, weatherLatLon.lon).catch(() => null) : Promise.resolve(null),
         ]);
 
-        // For ZIP path, location name comes from wttr.in response itself
-        const resolvedLocation = weatherLocation || weather?.locationName || zipRow?.value || '';
-        return json({ dueToday: dueTasks, meetings, stocks, sports, news, sportsNews, gmailEmails, gmailConnected, weather, weatherLocation: resolvedLocation, settings: { tickers: tickerRow?.value||'', teams: teamRow?.value||'', topics: topicRow?.value||'', weatherZip: zipRow?.value||'' } });
+        return json({ dueToday: dueTasks, meetings, stocks, sports, news, sportsNews, gmailEmails, gmailConnected, weather, weatherLocation, settings: { tickers: tickerRow?.value||'', teams: teamRow?.value||'', topics: topicRow?.value||'', weatherZip: zipRow?.value||'' } });
       }
 
       // ──────────────────────────────
