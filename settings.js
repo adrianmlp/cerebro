@@ -109,6 +109,49 @@ document.getElementById('brief-save-btn').addEventListener('click', async () => 
 // ── Start ──
 loadSettings();
 
+// ── Work Tasks ──
+async function loadWorkSettings() {
+  try {
+    const s = await apiFetch('/api/work/settings');
+    document.getElementById('work-webhook-url').value = s.webhookUrl || '';
+    document.getElementById('work-sync-token').value  = s.token || '';
+    const { results } = await apiFetch('/api/work/tasks');
+    const count = (results || []).length;
+    document.getElementById('work-tasks-status').textContent =
+      count ? `✓ ${count} work task${count !== 1 ? 's' : ''} synced` : 'No tasks synced yet';
+  } catch { /* not configured */ }
+}
+
+document.getElementById('copy-webhook-btn').addEventListener('click', () => {
+  navigator.clipboard.writeText(document.getElementById('work-webhook-url').value);
+  toast('Webhook URL copied', 'success');
+});
+
+document.getElementById('reveal-token-btn').addEventListener('click', function() {
+  const inp = document.getElementById('work-sync-token');
+  const hidden = inp.type === 'password';
+  inp.type = hidden ? 'text' : 'password';
+  this.textContent = hidden ? 'Hide' : 'Reveal';
+});
+
+document.getElementById('copy-token-btn').addEventListener('click', () => {
+  navigator.clipboard.writeText(document.getElementById('work-sync-token').value);
+  toast('Token copied', 'success');
+});
+
+document.getElementById('regen-token-btn').addEventListener('click', async () => {
+  if (!confirm('Regenerate token? Your work app will stop syncing until you update it with the new token.')) return;
+  try {
+    const s = await apiFetch('/api/work/settings/regenerate', { method: 'POST' });
+    document.getElementById('work-sync-token').value = s.token;
+    document.getElementById('work-sync-token').type = 'text';
+    document.getElementById('reveal-token-btn').textContent = 'Hide';
+    toast('Token regenerated — update your work app', 'success');
+  } catch (e) { toast(e.message, 'error'); }
+});
+
+loadWorkSettings();
+
 // ── Gmail ──
 async function loadGmailStatus() {
   try {

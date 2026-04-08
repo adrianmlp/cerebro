@@ -4,7 +4,9 @@ import { initNav } from './nav.js';
 initNav('tasks');
 
 let allTasks = [];
+let workTasks = [];
 let filterPriority = '';
+let filterSource = '';
 let showCompleted = true;
 let searchQuery = '';
 let editId = null;
@@ -88,27 +90,33 @@ window.deleteTask = async function(id) {
 // ── Load & render ──
 async function loadTasks() {
   try {
-    const { tasks } = await apiFetch('/api/tasks?sort=priority');
-    allTasks = tasks;
+    const [personalRes, workRes] = await Promise.allSettled([
+      apiFetch('/api/tasks?sort=priority'),
+      apiFetch('/api/work/tasks'),
+    ]).then(results => results.map(r => r.status === 'fulfilled' ? r.value : { tasks: [] }));
+    allTasks  = (personalRes.tasks || []).map(t => ({ ...t, source: 'personal' }));
+    workTasks = (workRes.tasks     || []).map(t => ({ ...t, source: 'work' }));
     renderTasks();
     updateStats();
   } catch (e) { toast(e.message, 'error'); }
 }
 
 function updateStats() {
-  const total = allTasks.length;
-  const done  = allTasks.filter(t => t.completed).length;
-  const pct   = total ? Math.round(done / total * 100) : 0;
-  document.getElementById('task-count').textContent = `${total} task${total !== 1 ? 's' : ''}`;
+  const total  = allTasks.length;
+  const done   = allTasks.filter(t => t.completed).length;
+  const pct    = total ? Math.round(done / total * 100) : 0;
+  const wCount = workTasks.filter(t => !t.completed).length;
+  document.getElementById('task-count').textContent = `${total} personal · ${wCount} work`;
   document.getElementById('completed-count').textContent = `${done} completed`;
   document.getElementById('progress-bar').style.width = pct + '%';
   document.getElementById('progress-pct').textContent = pct + '%';
 }
 
 function getFiltered() {
-  return allTasks
+  return [...allTasks, ...workTasks]
     .filter(t => {
       if (!showCompleted && t.completed) return false;
+      if (filterSource && t.source !== filterSource) return false;
       if (filterPriority && t.priority !== filterPriority) return false;
       if (searchQuery) {
         const q = searchQuery.toLowerCase();
@@ -117,7 +125,6 @@ function getFiltered() {
       return true;
     })
     .sort((a, b) => {
-      // Completed tasks to bottom
       if (a.completed !== b.completed) return a.completed ? 1 : -1;
       return (PRIORITY_ORDER[a.priority] ?? 99) - (PRIORITY_ORDER[b.priority] ?? 99);
     });
@@ -132,12 +139,14 @@ function renderTasks() {
     return;
   }
 
-  body.innerHTML = tasks.map(t => `
-    <div class="task-item${t.completed ? ' completed' : ''}">
+  body.innerHTML = tasks.map(t => {
+    const isWork = t.source === 'work';
+    return `
+    <div class="task-item${t.completed ? ' completed' : ''}${isWork ? ' task-work' : ''}">
       <input type="checkbox" class="task-checkbox" ${t.completed ? 'checked' : ''}
-        onchange="toggleTask('${t.id}', this.checked)" />
+        ${isWork ? 'disabled title="Work tasks are read-only"' : `onchange="toggleTask('${t.id}', this.checked)"`} />
       <div class="task-body">
-        <div class="task-title">${t.title}</div>
+        <div class="task-title">${t.title}${isWork ? ' <span class="task-source-badge">work</span>' : ''}</div>
         ${t.description ? `<div class="task-desc">${t.description}</div>` : ''}
         <div class="task-meta">
           ${priorityBadge(t.priority)}
@@ -145,11 +154,13 @@ function renderTasks() {
         </div>
       </div>
       <div class="task-actions">
-        <button class="btn-icon" onclick="editTask('${t.id}')" title="Edit">✏️</button>
-        <button class="btn-icon danger" onclick="deleteTask('${t.id}')" title="Delete">🗑</button>
+        ${isWork
+          ? `<span class="task-readonly-hint">view only</span>`
+          : `<button class="btn-icon" onclick="editTask('${t.id}')" title="Edit">✏️</button>
+             <button class="btn-icon danger" onclick="deleteTask('${t.id}')" title="Delete">🗑</button>`}
       </div>
-    </div>
-  `).join('');
+    </div>`;
+  }).join('');
 }
 
 // ── Controls ──
@@ -173,6 +184,14 @@ document.getElementById('priority-filters').addEventListener('click', e => {
   if (!btn) return;
   filterPriority = btn.dataset.priority;
   document.querySelectorAll('[data-priority]').forEach(b => b.classList.toggle('active', b === btn));
+  renderTasks();
+});
+
+document.getElementById('source-filters').addEventListener('click', e => {
+  const btn = e.target.closest('[data-source]');
+  if (!btn) return;
+  filterSource = btn.dataset.source;
+  document.querySelectorAll('[data-source]').forEach(b => b.classList.toggle('active', b === btn));
   renderTasks();
 });
 
