@@ -527,10 +527,10 @@ function renderBrief(data) {
 
   body.innerHTML = `<div class="brief-grid">
     <div class="brief-top-row">
-      <div>
-        <div class="brief-section-label">📌 Upcoming Tasks <button class="brief-add-btn" id="brief-add-task-btn">+ Add</button></div>
+      <a class="brief-section-link brief-section-block" href="tasks.html">
+        <div class="brief-section-label">📌 Upcoming Tasks ↗ <button class="brief-add-btn" id="brief-add-task-btn">+ Add</button></div>
         ${dueSec}
-      </div>
+      </a>
       <a class="brief-section-link brief-section-block" href="calendar.html?view=day&date=${today}">
         <div class="brief-section-label">📅 Today's Schedule ↗</div>
         ${meetSec}
