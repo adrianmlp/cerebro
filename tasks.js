@@ -90,12 +90,12 @@ window.deleteTask = async function(id) {
 // ── Load & render ──
 async function loadTasks() {
   try {
-    const [{ tasks: personal }, workRes] = await Promise.allSettled([
+    const [personalRes, workRes] = await Promise.allSettled([
       apiFetch('/api/tasks?sort=priority'),
       apiFetch('/api/work/tasks'),
     ]).then(results => results.map(r => r.status === 'fulfilled' ? r.value : { tasks: [] }));
-    allTasks  = (personal.tasks || []).map(t => ({ ...t, source: 'personal' }));
-    workTasks = (workRes.tasks  || []).map(t => ({ ...t, source: 'work' }));
+    allTasks  = (personalRes.tasks || []).map(t => ({ ...t, source: 'personal' }));
+    workTasks = (workRes.tasks     || []).map(t => ({ ...t, source: 'work' }));
     renderTasks();
     updateStats();
   } catch (e) { toast(e.message, 'error'); }
