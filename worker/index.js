@@ -1741,13 +1741,23 @@ Reply in 1-3 sentences. For create task/event return JSON: {"message":"...","act
             env.DB.prepare('SELECT value FROM settings WHERE key=?').bind('work_tasks_url').first(),
             env.DB.prepare('SELECT value FROM settings WHERE key=?').bind('work_tasks_token').first(),
           ]);
-          if (!urlRow?.value || !tokenRow?.value) return json({ error: 'not configured' });
+          if (!urlRow?.value || !tokenRow?.value) return json({ error: 'not configured', urlSet: !!urlRow?.value, tokenSet: !!tokenRow?.value });
           const base = urlRow.value.replace(/\/$/, '');
-          const res = await fetch(`${base}/api/sync/tasks?completed=false`, {
-            headers: { 'Authorization': `Bearer ${tokenRow.value}` },
-          });
-          const text = await res.text();
-          return json({ status: res.status, body: text.slice(0, 2000) });
+          const token = tokenRow.value.trim();
+          // Try Bearer header first, then x-api-token, then query param
+          const attempts = [
+            { label: 'Bearer header',    headers: { 'Authorization': `Bearer ${token}` } },
+            { label: 'x-api-token header', headers: { 'x-api-token': token } },
+            { label: 'query param',      url: `${base}/api/sync/tasks?completed=false&token=${encodeURIComponent(token)}` },
+          ];
+          const results = [];
+          for (const a of attempts) {
+            const r = await fetch(a.url || `${base}/api/sync/tasks?completed=false`, { headers: a.headers || {} });
+            const t = await r.text();
+            results.push({ method: a.label, status: r.status, body: t.slice(0, 300) });
+            if (r.ok) break;
+          }
+          return json({ tokenLength: token.length, tokenPrefix: token.slice(0,8)+'…', url: base, results });
         }
       }
 
