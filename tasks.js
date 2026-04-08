@@ -58,6 +58,28 @@ document.getElementById('save-btn').addEventListener('click', async () => {
   } catch (e) { toast(e.message, 'error'); }
 });
 
+// ── Work task actions (local D1 only) ──
+window.toggleWorkTask = async function(id, completed) {
+  try {
+    await apiFetch(`/api/work/tasks/${id}`, { method: 'PATCH', body: JSON.stringify({ completed }) });
+    const t = workTasks.find(t => t.id === id);
+    if (t) t.completed = completed;
+    renderTasks();
+    updateStats();
+  } catch (e) { toast(e.message, 'error'); }
+};
+
+window.deleteWorkTask = async function(id) {
+  if (!confirm('Remove this work task from Cerebro?')) return;
+  try {
+    await apiFetch(`/api/work/tasks/${id}`, { method: 'DELETE' });
+    workTasks = workTasks.filter(t => t.id !== id);
+    renderTasks();
+    updateStats();
+    toast('Work task removed', 'success');
+  } catch (e) { toast(e.message, 'error'); }
+};
+
 // ── Toggle completed ──
 window.toggleTask = async function(id, completed) {
   try {
@@ -144,7 +166,7 @@ function renderTasks() {
     return `
     <div class="task-item${t.completed ? ' completed' : ''}${isWork ? ' task-work' : ''}">
       <input type="checkbox" class="task-checkbox" ${t.completed ? 'checked' : ''}
-        ${isWork ? 'disabled title="Work tasks are read-only"' : `onchange="toggleTask('${t.id}', this.checked)"`} />
+        onchange="${isWork ? `toggleWorkTask('${t.id}', this.checked)` : `toggleTask('${t.id}', this.checked)`}" />
       <div class="task-body">
         <div class="task-title">${t.title}${isWork ? ' <span class="task-source-badge">work</span>' : ''}</div>
         ${t.description ? `<div class="task-desc">${t.description}</div>` : ''}
@@ -155,7 +177,7 @@ function renderTasks() {
       </div>
       <div class="task-actions">
         ${isWork
-          ? `<span class="task-readonly-hint">view only</span>`
+          ? `<button class="btn-icon danger" onclick="deleteWorkTask('${t.id}')" title="Remove">🗑</button>`
           : `<button class="btn-icon" onclick="editTask('${t.id}')" title="Edit">✏️</button>
              <button class="btn-icon danger" onclick="deleteTask('${t.id}')" title="Delete">🗑</button>`}
       </div>
