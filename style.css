@@ -492,44 +492,6 @@ body {
 
 .task-item:hover .task-actions { opacity: 1; }
 
-.task-work { border-left: 2px solid var(--indigo); }
-.task-source-badge {
-  display: inline-block;
-  font-size: 10px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--indigo);
-  background: rgba(99,102,241,0.12);
-  border: 1px solid rgba(99,102,241,0.3);
-  border-radius: 4px;
-  padding: 1px 5px;
-  vertical-align: middle;
-  margin-left: 6px;
-}
-.task-readonly-hint {
-  font-size: 11px;
-  color: var(--text-3);
-  align-self: center;
-  white-space: nowrap;
-}
-
-/* Brief work source badge */
-.brief-source-badge {
-  display: inline-block;
-  font-size: 10px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--indigo);
-  background: rgba(99,102,241,0.12);
-  border: 1px solid rgba(99,102,241,0.3);
-  border-radius: 4px;
-  padding: 1px 5px;
-  vertical-align: middle;
-  margin: 0 4px;
-}
-
 /* ─────────────────────────────
    CALENDAR EVENT CHIPS
 ───────────────────────────── */

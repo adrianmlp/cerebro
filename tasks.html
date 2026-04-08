@@ -51,19 +51,11 @@
   </div>
 
   <!-- Controls -->
-  <div style="display:flex;gap:12px;margin-bottom:12px;flex-wrap:wrap;align-items:center">
+  <div style="display:flex;gap:12px;margin-bottom:20px;flex-wrap:wrap;align-items:center">
     <div class="search-wrap" style="flex:1;min-width:180px">
       <span class="search-icon">⌕</span>
       <input class="input" id="search-input" placeholder="Search tasks…" />
     </div>
-    <div class="filter-pills" id="source-filters">
-      <button class="filter-pill active" data-source="">All</button>
-      <button class="filter-pill" data-source="personal">Personal</button>
-      <button class="filter-pill" data-source="work">Work</button>
-    </div>
-    <button class="btn btn-ghost btn-sm" id="toggle-completed-btn">Hide Completed</button>
-  </div>
-  <div style="display:flex;gap:12px;margin-bottom:20px;flex-wrap:wrap;align-items:center">
     <div class="filter-pills" id="priority-filters">
       <button class="filter-pill active" data-priority="">All Priorities</button>
       <button class="filter-pill" data-priority="URGENT">🔴 Urgent</button>
@@ -71,6 +63,7 @@
       <button class="filter-pill" data-priority="NORMAL">🔵 Normal</button>
       <button class="filter-pill" data-priority="BACKLOG">⚫ Backlog</button>
     </div>
+    <button class="btn btn-ghost btn-sm" id="toggle-completed-btn">Hide Completed</button>
   </div>
 
   <!-- Task list -->

@@ -354,7 +354,6 @@ function renderBrief(data) {
           <div class="brief-due-item">
             <div class="brief-due-dot ${PRIORITY_DOT[t.priority]||'NORMAL'}"></div>
             <span class="brief-due-title">${t.title}</span>
-            ${t.source === 'work' ? '<span class="brief-source-badge">work</span>' : ''}
             <span class="brief-due-date">${fmtDue(t.due_date)}</span>
           </div>`).join('')}
           ${data.dueToday.length > 7 ? `<div class="brief-empty">+${data.dueToday.length-7} more</div>` : ''}
