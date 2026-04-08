@@ -1714,14 +1714,15 @@ Reply in 1-3 sentences. For create task/event return JSON: {"message":"...","act
             env.DB.prepare('SELECT value FROM settings WHERE key=?').bind('work_tasks_url').first(),
             env.DB.prepare('SELECT value FROM settings WHERE key=?').bind('work_tasks_token').first(),
           ]);
-          if (!urlRow?.value || !tokenRow?.value) return json({ tasks: [] });
+          if (!urlRow?.value || !tokenRow?.value) return json({ tasks: [], debug: 'no settings' });
           const base = urlRow.value.replace(/\/$/, '');
           const qs = url.search || '';
           const res = await fetch(`${base}/api/sync/tasks${qs}`, {
             headers: { 'Authorization': `Bearer ${tokenRow.value}` },
           });
-          if (!res.ok) return json({ tasks: [] });
-          const data = await res.json();
+          if (!res.ok) return json({ tasks: [], debug: `upstream ${res.status}` });
+          const raw = await res.text();
+          let data; try { data = JSON.parse(raw); } catch { return json({ tasks: [], debug: 'parse error', raw: raw.slice(0,500) }); }
           const tasks = (Array.isArray(data) ? data : (data.tasks || [])).map(t => ({
             id: t.id,
             title: t.title,
@@ -1731,7 +1732,22 @@ Reply in 1-3 sentences. For create task/event return JSON: {"message":"...","act
             completed: !!t.completed,
             source: 'work',
           }));
-          return json({ tasks });
+          return json({ tasks, debug: `ok – ${tasks.length} tasks, raw keys: ${Object.keys(Array.isArray(data) ? (data[0]||{}) : data).join(',')}` });
+        }
+
+        // Debug: GET /api/work/debug → raw upstream response
+        if (seg[2] === 'debug' && method === 'GET') {
+          const [urlRow, tokenRow] = await Promise.all([
+            env.DB.prepare('SELECT value FROM settings WHERE key=?').bind('work_tasks_url').first(),
+            env.DB.prepare('SELECT value FROM settings WHERE key=?').bind('work_tasks_token').first(),
+          ]);
+          if (!urlRow?.value || !tokenRow?.value) return json({ error: 'not configured' });
+          const base = urlRow.value.replace(/\/$/, '');
+          const res = await fetch(`${base}/api/sync/tasks?completed=false`, {
+            headers: { 'Authorization': `Bearer ${tokenRow.value}` },
+          });
+          const text = await res.text();
+          return json({ status: res.status, body: text.slice(0, 2000) });
         }
       }
 
