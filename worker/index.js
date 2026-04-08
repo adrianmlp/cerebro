@@ -1168,8 +1168,8 @@ async function handleRequest(request, env) {
       const now = new Date().toISOString();
 
       // ── Event-based (task.created / task.updated / task.deleted) ──
-      if (body.event && body.task) {
-        const t = body.task;
+      if (body.event && (body.data || body.task)) {
+        const t = body.data || body.task;
         const id = String(t.id);
         if (body.event === 'task.deleted') {
           await env.DB.prepare('DELETE FROM work_tasks WHERE id=?').bind(id).run();
