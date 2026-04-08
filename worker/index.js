@@ -1140,15 +1140,31 @@ async function handleRequest(request, env) {
       return json({ token });
     }
 
-    // ── Work Tasks inbound sync (no Cerebro auth — uses its own sync token) ──
+    // ── Work Tasks inbound sync (no Cerebro auth — uses its own sync token + HMAC) ──
     if (path === '/api/work/tasks/sync' && method === 'POST') {
-      const authHeader = request.headers.get('Authorization') || '';
-      const provided = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : '';
       const tokenRow = await env.DB.prepare('SELECT value FROM settings WHERE key=?').bind('work_sync_token').first();
-      if (!provided || !tokenRow?.value || provided !== tokenRow.value) {
-        return json({ error: 'Invalid sync token' }, 401);
+      if (!tokenRow?.value) return json({ error: 'Sync not configured' }, 503);
+
+      const rawBody = await request.text();
+      const secret = tokenRow.value;
+
+      // Verify HMAC-SHA256 signature if provided (X-Cerebro-Signature: sha256=<hex>)
+      const sigHeader = request.headers.get('X-Cerebro-Signature') || '';
+      if (sigHeader) {
+        const expected = sigHeader.startsWith('sha256=') ? sigHeader.slice(7) : sigHeader;
+        const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(secret),
+          { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+        const mac = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(rawBody));
+        const actual = Array.from(new Uint8Array(mac)).map(b => b.toString(16).padStart(2,'0')).join('');
+        if (actual !== expected) return json({ error: 'Invalid signature' }, 401);
+      } else {
+        // Fall back to Bearer token check if no signature header
+        const authHeader = request.headers.get('Authorization') || '';
+        const provided = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : '';
+        if (!provided || provided !== secret) return json({ error: 'Invalid sync token' }, 401);
       }
-      const body = await request.json();
+
+      let body; try { body = JSON.parse(rawBody); } catch { return json({ error: 'Invalid JSON' }, 400); }
       const incoming = Array.isArray(body) ? body : (body.tasks || []);
       const now = new Date().toISOString();
       // Full replace: delete all existing, insert all incoming in a batch

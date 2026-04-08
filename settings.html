@@ -93,6 +93,10 @@
         </div>
         <div class="settings-hint">Keep this secret. Regenerating invalidates the old token.</div>
       </div>
+      <div class="settings-row">
+        <label class="settings-label">Payload Signing</label>
+        <div class="settings-hint" style="margin:0">Sign each request with <code style="font-size:11px;background:rgba(255,255,255,0.06);padding:1px 5px;border-radius:3px">HMAC-SHA256(token, raw_body)</code> and send as header <code style="font-size:11px;background:rgba(255,255,255,0.06);padding:1px 5px;border-radius:3px">X-Cerebro-Signature: sha256=&lt;hex&gt;</code>. Cerebro will reject requests with an invalid signature. Bearer token still accepted as fallback if no signature header is sent.</div>
+      </div>
       <div id="work-tasks-status" style="font-size:13px;color:var(--text-3);margin-top:8px"></div>
     </div>
   </div>
