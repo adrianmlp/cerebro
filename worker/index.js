@@ -1082,18 +1082,17 @@ async function briefFetchNews(topicStr) {
     return results;
   }
 
-  const items = [];
-  await Promise.allSettled(
+  // Collect per-topic results then flatten in settings order (not arrival order)
+  const settled = await Promise.allSettled(
     topics.map(async topic => {
       try {
-        // Try Bing first; fall back to Google if Bing returns nothing
         let results = await fetchFromBing(topic);
         if (!results.length) results = await fetchFromGoogle(topic);
-        items.push(...results);
-      } catch { /* skip */ }
+        return results;
+      } catch { return []; }
     })
   );
-  return items;
+  return settled.flatMap(r => r.status === 'fulfilled' ? r.value : []);
 }
 
 // ── Router ──
