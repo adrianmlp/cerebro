@@ -71,6 +71,32 @@
     </div>
   </div>
 
+  <!-- Work Tasks -->
+  <div class="card settings-section">
+    <div class="card-body">
+      <div class="settings-section-title">Work Tasks</div>
+      <p class="settings-hint" style="margin-bottom:16px">Configure your work app to push tasks to Cerebro. Copy the webhook URL and token below into your work app's sync settings.</p>
+      <div class="settings-row">
+        <label class="settings-label">Webhook URL</label>
+        <div style="display:flex;gap:8px;align-items:center">
+          <input class="input" id="work-webhook-url" readonly style="max-width:420px;font-family:monospace;font-size:12px" />
+          <button class="btn btn-ghost btn-sm" id="copy-webhook-btn">Copy</button>
+        </div>
+      </div>
+      <div class="settings-row">
+        <label class="settings-label">Sync Token</label>
+        <div style="display:flex;gap:8px;align-items:center">
+          <input class="input" id="work-sync-token" readonly type="password" style="max-width:420px;font-family:monospace;font-size:12px" />
+          <button class="btn btn-ghost btn-sm" id="reveal-token-btn">Reveal</button>
+          <button class="btn btn-ghost btn-sm" id="copy-token-btn">Copy</button>
+          <button class="btn btn-ghost btn-sm" id="regen-token-btn">Regenerate</button>
+        </div>
+        <div class="settings-hint">Keep this secret. Regenerating invalidates the old token.</div>
+      </div>
+      <div id="work-tasks-status" style="font-size:13px;color:var(--text-3);margin-top:8px"></div>
+    </div>
+  </div>
+
   <!-- Gmail -->
   <div class="card settings-section">
     <div class="card-body">

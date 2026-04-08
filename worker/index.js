@@ -99,6 +99,15 @@ async function runMigrations(env) {
       is_read INTEGER DEFAULT 0,
       created_at TEXT DEFAULT (datetime('now'))
     )`,
+    `CREATE TABLE IF NOT EXISTS work_tasks (
+      id TEXT PRIMARY KEY,
+      title TEXT NOT NULL,
+      description TEXT DEFAULT '',
+      priority TEXT DEFAULT 'NORMAL',
+      due_date TEXT,
+      completed INTEGER DEFAULT 0,
+      synced_at TEXT DEFAULT (datetime('now'))
+    )`,
   ];
   for (const sql of stmts) {
     try { await env.DB.prepare(sql).run(); } catch (e) {}
@@ -1131,6 +1140,38 @@ async function handleRequest(request, env) {
       return json({ token });
     }
 
+    // ── Work Tasks inbound sync (no Cerebro auth — uses its own sync token) ──
+    if (path === '/api/work/tasks/sync' && method === 'POST') {
+      const authHeader = request.headers.get('Authorization') || '';
+      const provided = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : '';
+      const tokenRow = await env.DB.prepare('SELECT value FROM settings WHERE key=?').bind('work_sync_token').first();
+      if (!provided || !tokenRow?.value || provided !== tokenRow.value) {
+        return json({ error: 'Invalid sync token' }, 401);
+      }
+      const body = await request.json();
+      const incoming = Array.isArray(body) ? body : (body.tasks || []);
+      const now = new Date().toISOString();
+      // Full replace: delete all existing, insert all incoming in a batch
+      await env.DB.prepare('DELETE FROM work_tasks').run();
+      if (incoming.length) {
+        for (const t of incoming) {
+          await env.DB.prepare(
+            `INSERT INTO work_tasks (id, title, description, priority, due_date, completed, synced_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?)`
+          ).bind(
+            String(t.id || crypto.randomUUID()),
+            t.title || '',
+            t.description || '',
+            t.priority || 'NORMAL',
+            t.dueDate ? t.dueDate.slice(0, 10) : (t.due_date || null),
+            t.completed ? 1 : 0,
+            now
+          ).run();
+        }
+      }
+      return json({ ok: true, synced: incoming.length });
+    }
+
     // ── Gmail OAuth callback (no Cerebro auth — comes from Google redirect) ──
     if (path === '/api/gmail/callback' && method === 'GET') {
       const code  = url.searchParams.get('code');
@@ -1656,6 +1697,39 @@ Reply in 1-3 sentences. For create task/event return JSON: {"message":"...","act
         }
       }
 
+      // ── Work Tasks (auth-protected reads + settings) ──
+      if (seg[1] === 'work') {
+        if (!await checkAuth(request, env)) return json({ error: 'Unauthorized' }, 401);
+
+        // GET /api/work/settings — return sync token (generate if missing) + webhook URL
+        if (seg[2] === 'settings' && method === 'GET') {
+          let tokenRow = await env.DB.prepare('SELECT value FROM settings WHERE key=?').bind('work_sync_token').first();
+          if (!tokenRow?.value) {
+            const newToken = Array.from(crypto.getRandomValues(new Uint8Array(32))).map(b => b.toString(16).padStart(2,'0')).join('');
+            await env.DB.prepare('INSERT OR REPLACE INTO settings (key,value) VALUES (?,?)').bind('work_sync_token', newToken).run();
+            tokenRow = { value: newToken };
+          }
+          return json({ token: tokenRow.value, webhookUrl: `${url.origin}/api/work/tasks/sync` });
+        }
+
+        // POST /api/work/settings/regenerate — issue a new token
+        if (seg[2] === 'settings' && seg[3] === 'regenerate' && method === 'POST') {
+          const newToken = Array.from(crypto.getRandomValues(new Uint8Array(32))).map(b => b.toString(16).padStart(2,'0')).join('');
+          await env.DB.prepare('INSERT OR REPLACE INTO settings (key,value) VALUES (?,?)').bind('work_sync_token', newToken).run();
+          return json({ token: newToken, webhookUrl: `${url.origin}/api/work/tasks/sync` });
+        }
+
+        // GET /api/work/tasks — read work tasks from D1
+        if (seg[2] === 'tasks' && method === 'GET') {
+          const { results } = await env.DB.prepare(
+            `SELECT id, title, description, priority, due_date, completed FROM work_tasks ORDER BY
+             CASE priority WHEN 'URGENT' THEN 0 WHEN 'HIGH' THEN 1 WHEN 'NORMAL' THEN 2 ELSE 3 END,
+             due_date ASC NULLS LAST`
+          ).all();
+          return json({ tasks: results.map(t => ({ ...t, completed: !!t.completed, source: 'work' })) });
+        }
+      }
+
       // ── Saves ──
       if (seg[1] === 'saves') {
         if (!await checkAuth(request, env)) return json({ error: 'Unauthorized' }, 401);
@@ -1759,12 +1833,13 @@ Reply in 1-3 sentences. For create task/event return JSON: {"message":"...","act
         const lonParam = url.searchParams.get('lon');
 
         // Load settings + D1 data in parallel
-        const [tickerRow, teamRow, topicRow, zipRow, { results: dueTasks }, personalEvRes, outlookEvRes] = await Promise.all([
+        const [tickerRow, teamRow, topicRow, zipRow, { results: dueTasks }, { results: workDueTasks }, personalEvRes, outlookEvRes] = await Promise.all([
           env.DB.prepare('SELECT value FROM settings WHERE key=?').bind('brief_tickers').first(),
           env.DB.prepare('SELECT value FROM settings WHERE key=?').bind('brief_teams').first(),
           env.DB.prepare('SELECT value FROM settings WHERE key=?').bind('brief_topics').first(),
           env.DB.prepare('SELECT value FROM settings WHERE key=?').bind('weather_zip').first(),
           env.DB.prepare(`SELECT title, priority, due_date FROM tasks WHERE completed=0 AND ((due_date BETWEEN ? AND ?) OR priority IN ('URGENT','HIGH')) ORDER BY CASE priority WHEN 'URGENT' THEN 0 WHEN 'HIGH' THEN 1 ELSE 2 END, due_date ASC NULLS LAST`).bind(today, endDate).all(),
+          env.DB.prepare(`SELECT id, title, priority, due_date FROM work_tasks WHERE completed=0 AND ((due_date BETWEEN ? AND ?) OR priority IN ('URGENT','HIGH'))`).bind(today, endDate).all(),
           (async () => {
             try {
               const r = await fetch(`${url.origin}/api/events?start=${today}&end=${today}`, { headers: request.headers });
@@ -1801,7 +1876,21 @@ Reply in 1-3 sentences. For create task/event return JSON: {"message":"...","act
           weatherLatLon ? briefFetchWeather(weatherLatLon.lat, weatherLatLon.lon).catch(() => null) : Promise.resolve(null),
         ]);
 
-        return json({ dueToday: dueTasks, meetings, stocks, sports, news, sportsNews, gmailEmails, gmailConnected, weather, weatherLocation, settings: { tickers: tickerRow?.value||'', teams: teamRow?.value||'', topics: topicRow?.value||'', weatherZip: zipRow?.value||'' } });
+        // Merge personal + work tasks sorted by priority then due date
+        const PO = { URGENT: 0, HIGH: 1, NORMAL: 2, BACKLOG: 3 };
+        const allDueTasks = [
+          ...dueTasks.map(t => ({ ...t, source: 'personal' })),
+          ...(workDueTasks || []).map(t => ({ ...t, source: 'work' })),
+        ].sort((a, b) => {
+          const pd = (PO[a.priority] ?? 2) - (PO[b.priority] ?? 2);
+          if (pd !== 0) return pd;
+          if (!a.due_date && !b.due_date) return 0;
+          if (!a.due_date) return 1;
+          if (!b.due_date) return -1;
+          return a.due_date.localeCompare(b.due_date);
+        });
+
+        return json({ dueToday: allDueTasks, meetings, stocks, sports, news, sportsNews, gmailEmails, gmailConnected, weather, weatherLocation, settings: { tickers: tickerRow?.value||'', teams: teamRow?.value||'', topics: topicRow?.value||'', weatherZip: zipRow?.value||'' } });
       }
 
       // ──────────────────────────────
