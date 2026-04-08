@@ -1032,6 +1032,35 @@ async function briefFetchSports(teamStr) {
   });
 }
 
+async function briefFetchWorkTasks(env) {
+  const [urlRow, tokenRow] = await Promise.all([
+    env.DB.prepare('SELECT value FROM settings WHERE key=?').bind('work_tasks_url').first(),
+    env.DB.prepare('SELECT value FROM settings WHERE key=?').bind('work_tasks_token').first(),
+  ]);
+  if (!urlRow?.value || !tokenRow?.value) return [];
+  try {
+    const base = urlRow.value.replace(/\/$/, '');
+    const res = await fetch(`${base}/api/sync/tasks?completed=false`, {
+      headers: { 'Authorization': `Bearer ${tokenRow.value}` },
+    });
+    if (!res.ok) return [];
+    const data = await res.json();
+    const tasks = Array.isArray(data) ? data : (data.tasks || []);
+    const today = new Date().toISOString().slice(0, 10);
+    const d7 = new Date(today + 'T12:00:00'); d7.setDate(d7.getDate() + 6);
+    const endDate = d7.toISOString().slice(0, 10);
+    return tasks
+      .map(t => ({
+        id: t.id,
+        title: t.title,
+        priority: t.priority || 'NORMAL',
+        due_date: t.dueDate ? t.dueDate.slice(0, 10) : null,
+        source: 'work',
+      }))
+      .filter(t => ['URGENT','HIGH'].includes(t.priority) || (t.due_date && t.due_date >= today && t.due_date <= endDate));
+  } catch { return []; }
+}
+
 async function briefFetchNews(topicStr) {
   if (!topicStr.trim()) return [];
   const topics = topicStr.split(',').map(s => s.trim()).filter(Boolean).slice(0, 4);
@@ -1656,6 +1685,56 @@ Reply in 1-3 sentences. For create task/event return JSON: {"message":"...","act
         }
       }
 
+      // ── Work Tasks Integration ──
+      if (seg[1] === 'work') {
+        if (!await checkAuth(request, env)) return json({ error: 'Unauthorized' }, 401);
+
+        // GET/PUT settings (url + token)
+        if (seg[2] === 'settings') {
+          if (method === 'GET') {
+            const [urlRow, tokenRow] = await Promise.all([
+              env.DB.prepare('SELECT value FROM settings WHERE key=?').bind('work_tasks_url').first(),
+              env.DB.prepare('SELECT value FROM settings WHERE key=?').bind('work_tasks_token').first(),
+            ]);
+            return json({ url: urlRow?.value || '', token: tokenRow?.value || '' });
+          }
+          if (method === 'PUT') {
+            const { url = '', token = '' } = await request.json();
+            await Promise.all([
+              env.DB.prepare('INSERT OR REPLACE INTO settings (key,value) VALUES (?,?)').bind('work_tasks_url', url).run(),
+              env.DB.prepare('INSERT OR REPLACE INTO settings (key,value) VALUES (?,?)').bind('work_tasks_token', token).run(),
+            ]);
+            return json({ ok: true });
+          }
+        }
+
+        // Proxy: GET /api/work/tasks → external API
+        if (seg[2] === 'tasks' && method === 'GET') {
+          const [urlRow, tokenRow] = await Promise.all([
+            env.DB.prepare('SELECT value FROM settings WHERE key=?').bind('work_tasks_url').first(),
+            env.DB.prepare('SELECT value FROM settings WHERE key=?').bind('work_tasks_token').first(),
+          ]);
+          if (!urlRow?.value || !tokenRow?.value) return json({ tasks: [] });
+          const base = urlRow.value.replace(/\/$/, '');
+          const qs = url.search || '';
+          const res = await fetch(`${base}/api/sync/tasks${qs}`, {
+            headers: { 'Authorization': `Bearer ${tokenRow.value}` },
+          });
+          if (!res.ok) return json({ tasks: [] });
+          const data = await res.json();
+          const tasks = (Array.isArray(data) ? data : (data.tasks || [])).map(t => ({
+            id: t.id,
+            title: t.title,
+            description: t.description || '',
+            priority: t.priority || 'NORMAL',
+            due_date: t.dueDate ? t.dueDate.slice(0, 10) : null,
+            completed: !!t.completed,
+            source: 'work',
+          }));
+          return json({ tasks });
+        }
+      }
+
       // ── Saves ──
       if (seg[1] === 'saves') {
         if (!await checkAuth(request, env)) return json({ error: 'Unauthorized' }, 401);
@@ -1792,16 +1871,31 @@ Reply in 1-3 sentences. For create task/event return JSON: {"message":"...","act
         const gmailTokenRow = await env.DB.prepare('SELECT value FROM settings WHERE key=?').bind('gmail_refresh_token').first();
         const gmailConnected = !!gmailTokenRow?.value;
 
-        const [stocks, sports, news, sportsNews, gmailEmails, weather] = await Promise.all([
+        const [stocks, sports, news, sportsNews, gmailEmails, weather, workTasks] = await Promise.all([
           briefFetchStocks(tickerRow?.value || ''),
           briefFetchSports(teamRow?.value   || ''),
           briefFetchNews(topicRow?.value    || ''),
           briefFetchNews(teamRow?.value     || ''),
           gmailConnected ? fetchGmailEmails(env).catch(() => []) : Promise.resolve([]),
           weatherLatLon ? briefFetchWeather(weatherLatLon.lat, weatherLatLon.lon).catch(() => null) : Promise.resolve(null),
+          briefFetchWorkTasks(env).catch(() => []),
         ]);
 
-        return json({ dueToday: dueTasks, meetings, stocks, sports, news, sportsNews, gmailEmails, gmailConnected, weather, weatherLocation, settings: { tickers: tickerRow?.value||'', teams: teamRow?.value||'', topics: topicRow?.value||'', weatherZip: zipRow?.value||'' } });
+        // Merge personal + work tasks, sorted by priority then due date
+        const PO = { URGENT: 0, HIGH: 1, NORMAL: 2, BACKLOG: 3 };
+        const allDueTasks = [
+          ...dueTasks.map(t => ({ ...t, source: 'personal' })),
+          ...workTasks,
+        ].sort((a, b) => {
+          const pd = (PO[a.priority] ?? 2) - (PO[b.priority] ?? 2);
+          if (pd !== 0) return pd;
+          if (!a.due_date && !b.due_date) return 0;
+          if (!a.due_date) return 1;
+          if (!b.due_date) return -1;
+          return a.due_date.localeCompare(b.due_date);
+        });
+
+        return json({ dueToday: allDueTasks, meetings, stocks, sports, news, sportsNews, gmailEmails, gmailConnected, weather, weatherLocation, settings: { tickers: tickerRow?.value||'', teams: teamRow?.value||'', topics: topicRow?.value||'', weatherZip: zipRow?.value||'' } });
       }
 
       // ──────────────────────────────

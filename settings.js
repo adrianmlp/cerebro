@@ -109,6 +109,30 @@ document.getElementById('brief-save-btn').addEventListener('click', async () => 
 // ── Start ──
 loadSettings();
 
+// ── Work Tasks ──
+async function loadWorkSettings() {
+  try {
+    const s = await apiFetch('/api/work/settings');
+    document.getElementById('work-tasks-url').value   = s.url   || '';
+    document.getElementById('work-tasks-token').value = s.token || '';
+  } catch { /* not configured yet */ }
+}
+
+document.getElementById('work-tasks-save-btn').addEventListener('click', async () => {
+  try {
+    await apiFetch('/api/work/settings', {
+      method: 'PUT',
+      body: JSON.stringify({
+        url:   document.getElementById('work-tasks-url').value.trim(),
+        token: document.getElementById('work-tasks-token').value.trim(),
+      }),
+    });
+    toast('Work tasks settings saved', 'success');
+  } catch (e) { toast(e.message || 'Save failed', 'error'); }
+});
+
+loadWorkSettings();
+
 // ── Gmail ──
 async function loadGmailStatus() {
   try {
