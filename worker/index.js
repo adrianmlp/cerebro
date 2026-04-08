@@ -1771,6 +1771,20 @@ Reply in 1-3 sentences. For create task/event return JSON: {"message":"...","act
           ).all();
           return json({ tasks: results.map(t => ({ ...t, completed: !!t.completed, source: 'work' })) });
         }
+
+        // PATCH /api/work/tasks/:id — toggle complete locally
+        if (seg[2] === 'tasks' && seg[3] && method === 'PATCH') {
+          const { completed } = await request.json();
+          await env.DB.prepare('UPDATE work_tasks SET completed=?, synced_at=? WHERE id=?')
+            .bind(completed ? 1 : 0, new Date().toISOString(), seg[3]).run();
+          return json({ ok: true });
+        }
+
+        // DELETE /api/work/tasks/:id — remove locally
+        if (seg[2] === 'tasks' && seg[3] && method === 'DELETE') {
+          await env.DB.prepare('DELETE FROM work_tasks WHERE id=?').bind(seg[3]).run();
+          return json({ ok: true });
+        }
       }
 
       // ── Saves ──
