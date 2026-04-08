@@ -1165,25 +1165,52 @@ async function handleRequest(request, env) {
       }
 
       let body; try { body = JSON.parse(rawBody); } catch { return json({ error: 'Invalid JSON' }, 400); }
-      const incoming = Array.isArray(body) ? body : (body.tasks || []);
       const now = new Date().toISOString();
-      // Full replace: delete all existing, insert all incoming in a batch
-      await env.DB.prepare('DELETE FROM work_tasks').run();
-      if (incoming.length) {
-        for (const t of incoming) {
-          await env.DB.prepare(
-            `INSERT INTO work_tasks (id, title, description, priority, due_date, completed, synced_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?)`
-          ).bind(
-            String(t.id || crypto.randomUUID()),
-            t.title || '',
-            t.description || '',
-            t.priority || 'NORMAL',
-            t.dueDate ? t.dueDate.slice(0, 10) : (t.due_date || null),
-            t.completed ? 1 : 0,
-            now
-          ).run();
+
+      // ── Event-based (task.created / task.updated / task.deleted) ──
+      if (body.event && body.task) {
+        const t = body.task;
+        const id = String(t.id);
+        if (body.event === 'task.deleted') {
+          await env.DB.prepare('DELETE FROM work_tasks WHERE id=?').bind(id).run();
+          return json({ ok: true, event: 'deleted', id });
         }
+        // created or updated — upsert
+        await env.DB.prepare(
+          `INSERT INTO work_tasks (id, title, description, priority, due_date, completed, synced_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?)
+           ON CONFLICT(id) DO UPDATE SET
+             title=excluded.title, description=excluded.description,
+             priority=excluded.priority, due_date=excluded.due_date,
+             completed=excluded.completed, synced_at=excluded.synced_at`
+        ).bind(
+          id,
+          t.title || '',
+          t.description || '',
+          t.priority || 'NORMAL',
+          t.dueDate ? t.dueDate.slice(0, 10) : (t.due_date || null),
+          t.completed ? 1 : 0,
+          now
+        ).run();
+        return json({ ok: true, event: body.event, id });
+      }
+
+      // ── Full sync (bulk replace) ──
+      const incoming = Array.isArray(body) ? body : (body.tasks || []);
+      await env.DB.prepare('DELETE FROM work_tasks').run();
+      for (const t of incoming) {
+        await env.DB.prepare(
+          `INSERT INTO work_tasks (id, title, description, priority, due_date, completed, synced_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?)`
+        ).bind(
+          String(t.id || crypto.randomUUID()),
+          t.title || '',
+          t.description || '',
+          t.priority || 'NORMAL',
+          t.dueDate ? t.dueDate.slice(0, 10) : (t.due_date || null),
+          t.completed ? 1 : 0,
+          now
+        ).run();
       }
       return json({ ok: true, synced: incoming.length });
     }
