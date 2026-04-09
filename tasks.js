@@ -125,13 +125,8 @@ async function loadTasks() {
 
 function updateStats() {
   const total  = allTasks.length;
-  const done   = allTasks.filter(t => t.completed).length;
-  const pct    = total ? Math.round(done / total * 100) : 0;
   const wCount = workTasks.filter(t => !t.completed).length;
   document.getElementById('task-count').textContent = `${total} personal · ${wCount} work`;
-  document.getElementById('completed-count').textContent = `${done} completed`;
-  document.getElementById('progress-bar').style.width = pct + '%';
-  document.getElementById('progress-pct').textContent = pct + '%';
 }
 
 function getFiltered() {

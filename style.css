@@ -657,18 +657,32 @@ body {
   letter-spacing: 0.5px;
 }
 
+/* Week wrapper spans all 7 grid columns, hosts absolute event bars */
+.cal-week-wrapper {
+  grid-column: 1 / -1;
+  position: relative;
+  background: var(--border); /* shows through .cal-week-cells gap as column lines */
+}
+
+.cal-week-cells {
+  display: flex;
+  gap: 1px;
+}
+
 .cal-cell {
   background: var(--card-to);
-  height: 110px;
-  overflow: hidden;
+  min-height: 110px;
+  flex: 1 1 0;
+  min-width: 0;
   padding: 6px;
+  padding-bottom: 20px; /* room for overflow count */
   cursor: pointer;
   transition: background 0.15s;
   position: relative;
 }
 
 .cal-cell:hover { background: rgba(99,102,241,0.05); }
-.cal-cell.other-month { opacity: 0.35; }
+.cal-cell.other-month { opacity: 0.35; pointer-events: none; }
 .cal-cell.today { background: rgba(99,102,241,0.08); }
 .cal-cell.today .cal-cell-date { color: var(--indigo); font-weight: 700; }
 
@@ -676,7 +690,44 @@ body {
   font-size: 12px;
   font-weight: 500;
   color: var(--text-2);
-  margin-bottom: 4px;
+}
+
+.cal-cell-overflow {
+  position: absolute;
+  bottom: 4px;
+  left: 6px;
+  font-size: 10px;
+  color: var(--text-3);
+  cursor: pointer;
+}
+.cal-cell-overflow:hover { color: var(--text-1); }
+
+/* Multi-day / single-day event bars in month view */
+.cal-multiday-bar {
+  position: absolute;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  padding: 0 5px;
+  font-size: 11px;
+  font-weight: 500;
+  color: #fff;
+  white-space: nowrap;
+  overflow: hidden;
+  cursor: pointer;
+  z-index: 1;
+  border-radius: 0;
+  transition: filter 0.12s;
+}
+.cal-multiday-bar:hover { filter: brightness(1.18); }
+.cal-multiday-bar.bar-cap-l { border-radius: 3px 0 0 3px; }
+.cal-multiday-bar.bar-cap-r { border-radius: 0 3px 3px 0; }
+.cal-multiday-bar.bar-cap-l.bar-cap-r { border-radius: 3px; }
+
+.cal-bar-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .cal-event-dot {
@@ -1399,6 +1450,116 @@ body {
 }
 
 /* ─────────────────────────────
+   DAY MODAL — TIME GRID (dtg)
+───────────────────────────── */
+
+/* All-day banner row */
+.dtg-allday-row {
+  display: flex;
+  border-bottom: 1px solid var(--border);
+  padding: 4px 0;
+}
+.dtg-allday-label {
+  width: 56px;
+  flex-shrink: 0;
+  font-size: 10px;
+  color: var(--text-3);
+  text-align: right;
+  padding: 6px 8px 0;
+  border-right: 1px solid var(--border);
+}
+.dtg-allday-col {
+  flex: 1;
+  padding: 4px 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  border-right: 1px solid var(--border);
+}
+.dtg-allday-col:last-child { border-right: none; }
+
+/* Main time grid container */
+.dtg-wrap {
+  display: flex;
+  position: relative;
+  overflow: hidden;
+}
+
+/* Time label column */
+.dtg-labels {
+  width: 56px;
+  flex-shrink: 0;
+  position: relative;
+}
+.dtg-label {
+  position: absolute;
+  right: 8px;
+  transform: translateY(-50%);
+  font-size: 10px;
+  color: var(--text-3);
+  font-family: var(--font-mono);
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+/* Event columns */
+.dtg-col {
+  flex: 1;
+  position: relative;
+  border-left: 1px solid var(--border);
+}
+.dtg-work-col  { border-right: 1px solid var(--border); }
+.dtg-pers-col  { cursor: pointer; }
+.dtg-pers-col:hover { background: rgba(99,102,241,0.02); }
+
+/* Hour and half-hour grid lines */
+.dtg-hour-line {
+  position: absolute;
+  left: 0; right: 0;
+  border-top: 1px solid var(--border);
+  pointer-events: none;
+}
+.dtg-half-line {
+  position: absolute;
+  left: 0; right: 0;
+  border-top: 1px dashed rgba(255,255,255,0.07);
+  pointer-events: none;
+}
+
+/* Timed event blocks */
+.dtg-event {
+  position: absolute;
+  left: 3px; right: 3px;
+  border-radius: 4px;
+  padding: 3px 6px;
+  overflow: hidden;
+  cursor: pointer;
+  color: #fff;
+  display: flex;
+  flex-direction: column;
+  z-index: 1;
+  border-left: 3px solid rgba(255,255,255,0.35);
+  transition: filter 0.12s;
+  box-sizing: border-box;
+}
+.dtg-event:hover { filter: brightness(1.15); z-index: 2; }
+
+.dtg-event-title {
+  font-size: 11px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dtg-event-time {
+  font-size: 10px;
+  font-family: var(--font-mono);
+  opacity: 0.85;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+/* ─────────────────────────────
    CONTEXT MENU (recurring)
 ───────────────────────────── */
 .context-menu {
@@ -1720,14 +1881,8 @@ body {
 
   .cal-month-grid .cal-cell { min-height: 64px; }
   .cal-event-dot { display: none; }
-  .cal-cell.has-events::after {
-    content: '';
-    display: block;
-    width: 5px; height: 5px;
-    background: var(--indigo);
-    border-radius: 50%;
-    margin: 2px auto 0;
-  }
+  .cal-multiday-bar { height: 16px; font-size: 10px; }
+  .cal-cell-overflow { font-size: 9px; }
 }
 
 /* ─────────────────────────────
