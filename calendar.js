@@ -140,75 +140,135 @@ window.closeDayModal = function() {
 
 function refreshDayModal() {
   if (!dayModalDate) return;
+  const body = document.getElementById('day-modal-body');
+
+  const START_H  = 7;
+  const END_H    = 23;   // exclusive (renders up to 11 PM line)
+  const N_HOURS  = END_H - START_H;
+  const ROW_H    = 64;   // px per hour
+  const TOTAL_H  = N_HOURS * ROW_H;
+
   const dayPersonal = events.filter(e => e.start_time?.startsWith(dayModalDate));
   const dayWork     = outlookEvents.filter(e => e.start_time?.startsWith(dayModalDate));
-  const body        = document.getElementById('day-modal-body');
 
-  const HOURS = Array.from({length: 16}, (_, i) => i + 7);
+  // Separate all-day events (T00:00:00 with no meaningful time)
+  const isAllDay = e => !e.end_time && e.start_time?.endsWith('T00:00:00');
+  const persAllDay  = dayPersonal.filter(isAllDay);
+  const persTimed   = dayPersonal.filter(e => !isAllDay(e));
+  const workAllDay  = dayWork.filter(isAllDay);
+  const workTimed   = dayWork.filter(e => !isAllDay(e));
 
-  function workChip(e) {
-    const startLabel = formatTime(e.start_time);
-    const endLabel   = e.end_time ? ` – ${formatTime(e.end_time)}` : '';
-    return `<div class="day-event-chip" style="background:#0EA5E9"
-      data-outlook-uid="${e.uid}" data-day-instance="${e._instanceDate || ''}">
-      <span class="day-event-chip-time">${startLabel}${endLabel}</span>
-      <span style="flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${e.title}</span>
+  // Build time labels
+  let labelsHtml = '';
+  for (let h = START_H; h < END_H; h++) {
+    const label = h === 12 ? '12 PM' : h < 12 ? `${h} AM` : `${h - 12} PM`;
+    labelsHtml += `<div class="dtg-label" style="top:${(h - START_H) * ROW_H}px">${label}</div>`;
+  }
+
+  // Build grid lines (per column, same for both)
+  function gridLines() {
+    let s = '';
+    for (let i = 0; i < N_HOURS; i++) {
+      s += `<div class="dtg-hour-line" style="top:${i * ROW_H}px"></div>`;
+      s += `<div class="dtg-half-line" style="top:${i * ROW_H + ROW_H / 2}px"></div>`;
+    }
+    return s;
+  }
+
+  // Build a timed event block
+  function timedBlock(e, isWork) {
+    const start    = new Date(e.start_time);
+    const end      = e.end_time ? new Date(e.end_time) : null;
+    const startMin = start.getHours() * 60 + start.getMinutes() - START_H * 60;
+    const endMin   = end
+      ? end.getHours() * 60 + end.getMinutes() - START_H * 60
+      : startMin + 60;
+    if (startMin >= N_HOURS * 60 || endMin <= 0) return '';
+    const top    = Math.max(0, startMin / 60 * ROW_H).toFixed(1);
+    const height = Math.max(20, (endMin - startMin) / 60 * ROW_H).toFixed(1);
+    const color  = isWork ? '#0EA5E9' : e.color;
+    const time   = `${formatTime(e.start_time)}${end ? ' – ' + formatTime(e.end_time) : ''}`;
+    const data   = isWork
+      ? `data-outlook-uid="${e.uid}" data-day-instance="${e._instanceDate || ''}"`
+      : `data-day-event-id="${e.id}" data-day-instance="${e._instanceDate || ''}"`;
+    return `<div class="dtg-event" style="top:${top}px;height:${height}px;background:${color}" ${data}>
+      <span class="dtg-event-title">${e.title}</span>
+      <span class="dtg-event-time">${time}</span>
     </div>`;
   }
 
-  function personalChip(e) {
-    const startLabel = formatTime(e.start_time);
-    const endLabel   = e.end_time ? ` – ${formatTime(e.end_time)}` : '';
-    return `<div class="day-event-chip" style="background:${e.color}"
-      data-day-event-id="${e.id}" data-day-instance="${e._instanceDate || ''}">
-      <span class="day-event-chip-time">${startLabel}${endLabel}</span>
-      <span style="flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${e.title}</span>
+  // All-day chips (flat list at top)
+  function allDayChips(evList, isWork) {
+    return evList.map(e => {
+      const color = isWork ? '#0EA5E9' : e.color;
+      const data  = isWork
+        ? `data-outlook-uid="${e.uid}" data-day-instance="${e._instanceDate || ''}"`
+        : `data-day-event-id="${e.id}" data-day-instance="${e._instanceDate || ''}"`;
+      return `<div class="day-event-chip" style="background:${color}" ${data}>
+        <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${e.title}</span>
+      </div>`;
+    }).join('');
+  }
+
+  const hasAllDay = persAllDay.length || workAllDay.length;
+
+  let html = `
+    <div class="day-split-col-header">
+      <div></div>
+      <div class="day-split-col-label work">🏢 Work</div>
+      <div class="day-split-col-label personal">🏠 Personal</div>
+    </div>`;
+
+  if (hasAllDay) {
+    html += `<div class="dtg-allday-row">
+      <div class="dtg-allday-label">All Day</div>
+      <div class="dtg-allday-col">${allDayChips(workAllDay, true)}</div>
+      <div class="dtg-allday-col">${allDayChips(persAllDay, false)}</div>
     </div>`;
   }
 
-  // Column header
-  let html = `<div class="day-split-col-header">
-    <div></div>
-    <div class="day-split-col-label work">🏢 Work</div>
-    <div class="day-split-col-label personal">🏠 Personal</div>
+  html += `<div class="dtg-wrap" style="height:${TOTAL_H}px">
+    <div class="dtg-labels">${labelsHtml}</div>
+    <div class="dtg-col dtg-work-col">
+      ${gridLines()}
+      ${workTimed.map(e => timedBlock(e, true)).join('')}
+    </div>
+    <div class="dtg-col dtg-pers-col" id="dtg-pers-col">
+      ${gridLines()}
+      ${persTimed.map(e => timedBlock(e, false)).join('')}
+    </div>
   </div>`;
-
-  html += HOURS.map(h => {
-    const label       = h === 12 ? '12 PM' : h < 12 ? `${h} AM` : `${h - 12} PM`;
-    const workSlot    = dayWork.filter(e => e.start_time && new Date(e.start_time).getHours() === h);
-    const persSlot    = dayPersonal.filter(e => e.start_time && !e.start_time.endsWith('T00:00:00') && new Date(e.start_time).getHours() === h);
-
-    return `<div class="day-hour-row">
-      <div class="day-hour-label">${label}</div>
-      <div class="day-hour-work-slot">${workSlot.map(workChip).join('')}</div>
-      <div class="day-hour-slot" data-slot-hour="${h}">${persSlot.map(personalChip).join('')}</div>
-    </div>`;
-  }).join('');
 
   body.innerHTML = html;
 
-  body.querySelectorAll('.day-hour-slot[data-slot-hour]').forEach(slot => {
-    slot.addEventListener('click', e => {
-      if (e.target.closest('[data-day-event-id]')) return;
-      const h = String(slot.dataset.slotHour).padStart(2, '0');
-      openEventModal({ date: dayModalDate, startTime: `${h}:00` });
-    });
+  // Click personal column → add event snapped to 15 min
+  body.querySelector('#dtg-pers-col').addEventListener('click', e => {
+    if (e.target.closest('[data-day-event-id]')) return;
+    const rect   = e.currentTarget.getBoundingClientRect();
+    const y      = e.clientY - rect.top;
+    const raw    = y / ROW_H * 60 + START_H * 60;
+    const snapped = Math.min(Math.max(0, Math.round(raw / 15) * 15), END_H * 60 - 15);
+    const hh     = String(Math.floor(snapped / 60)).padStart(2, '0');
+    const mm     = String(snapped % 60).padStart(2, '0');
+    openEventModal({ date: dayModalDate, startTime: `${hh}:${mm}` });
   });
 
-  body.querySelectorAll('[data-day-event-id]').forEach(chip => {
-    chip.addEventListener('click', e => {
+  // Personal timed event clicks
+  body.querySelectorAll('[data-day-event-id]').forEach(el => {
+    el.addEventListener('click', e => {
       e.stopPropagation();
-      const ev = events.find(ev => ev.id === chip.dataset.dayEventId && (ev._instanceDate || '') === chip.dataset.dayInstance)
-              || events.find(ev => ev.id === chip.dataset.dayEventId);
+      const ev = events.find(ev => ev.id === el.dataset.dayEventId && (ev._instanceDate || '') === el.dataset.dayInstance)
+              || events.find(ev => ev.id === el.dataset.dayEventId);
       if (ev) showEventDetail(ev);
     });
   });
 
-  body.querySelectorAll('[data-outlook-uid]').forEach(chip => {
-    chip.addEventListener('click', e => {
+  // Work event clicks
+  body.querySelectorAll('[data-outlook-uid]').forEach(el => {
+    el.addEventListener('click', e => {
       e.stopPropagation();
-      const ev = outlookEvents.find(ev => ev.uid === chip.dataset.outlookUid && (ev._instanceDate || '') === chip.dataset.dayInstance)
-              || outlookEvents.find(ev => ev.uid === chip.dataset.outlookUid);
+      const ev = outlookEvents.find(ev => ev.uid === el.dataset.outlookUid && (ev._instanceDate || '') === el.dataset.dayInstance)
+              || outlookEvents.find(ev => ev.uid === el.dataset.outlookUid);
       if (ev) showOutlookDetail(ev);
     });
   });
@@ -282,49 +342,139 @@ const MONTHS = ['January','February','March','April','May','June','July','August
 
 function renderMonth() {
   const y = cursor.getFullYear(), m = cursor.getMonth();
-  const firstDay     = new Date(y, m, 1).getDay();
-  const daysInMonth  = new Date(y, m+1, 0).getDate();
-  const todayStr     = localDateStr();
+  const firstDay    = new Date(y, m, 1).getDay();
+  const daysInMonth = new Date(y, m+1, 0).getDate();
+  const todayStr    = localDateStr();
 
-  // Build event maps for both calendars
-  const personalMap = {};
-  events.forEach(e => {
-    const d = e.start_time?.split('T')[0];
-    if (d) { personalMap[d] = personalMap[d] || []; personalMap[d].push({ ...e, _source: 'personal' }); }
-  });
-  const workMap = {};
-  outlookEvents.forEach(e => {
-    const d = e.start_time?.split('T')[0];
-    if (d) { workMap[d] = workMap[d] || []; workMap[d].push({ ...e, _source: 'work' }); }
-  });
+  // Helper: next day string
+  function nextDay(ds) {
+    const d = new Date(ds + 'T12:00:00');
+    d.setDate(d.getDate() + 1);
+    return localDateStr(d);
+  }
+
+  // Normalize all events with date ranges
+  const allEvs = [
+    ...events.map(e => ({
+      id: e.id, uid: null, title: e.title, color: e.color,
+      _source: 'personal', _instanceDate: e._instanceDate || '',
+      _startDate: e.start_time?.split('T')[0],
+      _endDate: (e.end_time || e.start_time)?.split('T')[0],
+    })),
+    ...outlookEvents.map(e => ({
+      id: null, uid: e.uid, title: e.title, color: '#0EA5E9',
+      _source: 'work', _instanceDate: e._instanceDate || '',
+      _startDate: e.start_time?.split('T')[0],
+      _endDate: (e.end_time || e.start_time)?.split('T')[0],
+    })),
+  ].filter(e => e._startDate);
+
+  // Build week rows: array of arrays of 7 date strings (null = padding)
+  const cells = [];
+  for (let i = 0; i < firstDay; i++) cells.push(null);
+  for (let d = 1; d <= daysInMonth; d++)
+    cells.push(`${y}-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`);
+  while (cells.length % 7 !== 0) cells.push(null);
+
+  const weeks = [];
+  for (let i = 0; i < cells.length; i += 7) weeks.push(cells.slice(i, i+7));
+
+  const MAX_LANES = 3;
 
   let html = `<div class="cal-month-grid">${DAYS.map(d=>`<div class="cal-day-header">${d}</div>`).join('')}`;
-  for (let i = 0; i < firstDay; i++) html += `<div class="cal-cell other-month"></div>`;
 
-  for (let day = 1; day <= daysInMonth; day++) {
-    const ds      = `${y}-${String(m+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
-    const personal = personalMap[ds] || [];
-    const work     = workMap[ds] || [];
-    const all      = [...work, ...personal];
-    const isToday  = ds === todayStr;
+  weeks.forEach(week => {
+    const weekDates  = week.filter(Boolean);
+    const weekStart  = weekDates[0];
+    const weekEnd    = weekDates[weekDates.length - 1];
 
-    let dotsHtml = '';
-    // Work events (sky blue dot)
-    work.slice(0, 2).forEach(e => {
-      dotsHtml += `<div class="cal-event-dot work-event" data-outlook-uid="${e.uid}" data-instance="${e._instanceDate||''}">${e.title}</div>`;
+    // Events overlapping this week
+    const weekEvs = allEvs
+      .filter(e => e._startDate <= weekEnd && e._endDate >= weekStart)
+      .map(e => ({
+        ...e,
+        clipStart:       e._startDate < weekStart ? weekStart : e._startDate,
+        clipEnd:         e._endDate   > weekEnd   ? weekEnd   : e._endDate,
+        continuesBefore: e._startDate < weekStart,
+        continuesAfter:  e._endDate   > weekEnd,
+      }))
+      .sort((a, b) => {
+        // Multi-day events first (longer spans → lower lane), then by start
+        const spanA = week.indexOf(a.clipEnd) - week.indexOf(a.clipStart);
+        const spanB = week.indexOf(b.clipEnd) - week.indexOf(b.clipStart);
+        if (spanB !== spanA) return spanB - spanA;
+        return a.clipStart.localeCompare(b.clipStart);
+      });
+
+    // Greedy lane assignment
+    const laneEnds = [];
+    const assigned = weekEvs.map(ev => {
+      for (let lane = 0; ; lane++) {
+        if (!laneEnds[lane] || laneEnds[lane] < ev.clipStart) {
+          laneEnds[lane] = ev.clipEnd;
+          return { ...ev, lane };
+        }
+      }
     });
-    // Personal events
-    personal.slice(0, Math.max(0, 3 - work.slice(0,2).length)).forEach(e => {
-      dotsHtml += `<div class="cal-event-dot" style="background:${e.color}" data-event-id="${e.id}" data-instance="${e._instanceDate||''}">${e.title}</div>`;
-    });
-    const overflow = all.length - (work.slice(0,2).length + personal.slice(0, Math.max(0, 3 - work.slice(0,2).length)).length);
 
-    html += `<div class="cal-cell${isToday?' today':''}${all.length?' has-events':''}" data-date="${ds}">
-      <div class="cal-cell-date">${day}</div>
-      ${dotsHtml}
-      ${overflow > 0 ? `<div style="font-size:10px;color:var(--text-3)">+${overflow} more</div>` : ''}
-    </div>`;
-  }
+    // Count overflows per day
+    const overflow = {};
+    weekDates.forEach(ds => { overflow[ds] = 0; });
+    assigned.forEach(ev => {
+      if (ev.lane >= MAX_LANES) {
+        let ds = ev.clipStart;
+        while (ds <= ev.clipEnd) {
+          if (overflow[ds] !== undefined) overflow[ds]++;
+          if (ds === weekEnd) break;
+          ds = nextDay(ds);
+        }
+      }
+    });
+
+    // Week wrapper (spans all 7 grid columns, position:relative)
+    html += `<div class="cal-week-wrapper">`;
+
+    // Day cells
+    html += `<div class="cal-week-cells">`;
+    week.forEach(ds => {
+      const isToday = ds === todayStr;
+      const isOther = !ds;
+      html += `<div class="cal-cell${isOther ? ' other-month' : ''}${isToday ? ' today' : ''}" data-date="${ds || ''}">`;
+      if (ds) {
+        html += `<div class="cal-cell-date">${parseInt(ds.split('-')[2])}</div>`;
+        if (overflow[ds] > 0)
+          html += `<div class="cal-cell-overflow" data-date="${ds}">+${overflow[ds]} more</div>`;
+      }
+      html += `</div>`;
+    });
+    html += `</div>`; // .cal-week-cells
+
+    // Event bars (absolute, positioned within .cal-week-wrapper)
+    assigned.filter(ev => ev.lane < MAX_LANES).forEach(ev => {
+      const startIdx = week.indexOf(ev.clipStart);
+      const endIdx   = week.indexOf(ev.clipEnd);
+      if (startIdx === -1 || endIdx === -1) return;
+
+      const leftPct  = (startIdx / 7 * 100).toFixed(3);
+      const rightPct = ((6 - endIdx) / 7 * 100).toFixed(3);
+      const topPx    = 26 + ev.lane * 22;
+
+      const ml = ev.continuesBefore ? '0px' : '2px';
+      const mr = ev.continuesAfter  ? '0px' : '2px';
+
+      const capCls = `${!ev.continuesBefore ? ' bar-cap-l' : ''}${!ev.continuesAfter ? ' bar-cap-r' : ''}`;
+      const dataAttr = ev._source === 'work'
+        ? `data-outlook-uid="${ev.uid}" data-instance="${ev._instanceDate}"`
+        : `data-event-id="${ev.id}" data-instance="${ev._instanceDate}"`;
+
+      html += `<div class="cal-multiday-bar${capCls}"
+        style="left:calc(${leftPct}% + ${ml});right:calc(${rightPct}% + ${mr});top:${topPx}px;background:${ev.color}"
+        ${dataAttr}>${!ev.continuesBefore ? `<span class="cal-bar-title">${ev.title}</span>` : ''}</div>`;
+    });
+
+    html += `</div>`; // .cal-week-wrapper
+  });
+
   html += '</div>';
   return html;
 }
@@ -411,9 +561,18 @@ function renderSplitView(mode) {
 function attachCellClicks() {
   // Month cell → day modal
   document.querySelectorAll('.cal-cell[data-date]').forEach(cell => {
+    if (!cell.dataset.date) return;
     cell.addEventListener('click', e => {
-      if (e.target.closest('[data-event-id],[data-outlook-uid]')) return;
+      if (e.target.closest('[data-event-id],[data-outlook-uid],.cal-cell-overflow')) return;
       openDayModal(cell.dataset.date);
+    });
+  });
+
+  // Overflow badge → day modal
+  document.querySelectorAll('.cal-cell-overflow[data-date]').forEach(el => {
+    el.addEventListener('click', e => {
+      e.stopPropagation();
+      openDayModal(el.dataset.date);
     });
   });
 
