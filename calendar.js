@@ -61,6 +61,10 @@ function openEventModal(defaults = {}) {
   document.getElementById('event-save-btn').textContent = editingEventId ? 'Save Changes' : 'Add Event';
   selectedColor = defaults.color || EVENT_COLORS[0];
   buildColorPicker();
+  // Show device timezone so user knows what tz the times apply to
+  const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const abbr = new Intl.DateTimeFormat('en-US', { timeZoneName: 'short' }).formatToParts(new Date()).find(p => p.type === 'timeZoneName')?.value || tz;
+  document.getElementById('event-tz-hint').textContent = `🌐 Times are in ${abbr} (${tz})`;
   document.getElementById('event-modal').classList.add('open');
 }
 
