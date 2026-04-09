@@ -442,6 +442,12 @@ function attachCellClicks() {
   });
 }
 
+// ── Timezone abbreviation for a given date (uses device locale/tz, handles DST) ──
+function tzAbbr(date) {
+  return new Intl.DateTimeFormat('en-US', { timeZoneName: 'short' })
+    .formatToParts(date).find(p => p.type === 'timeZoneName')?.value || '';
+}
+
 // ── Personal event detail ──
 function showEventDetail(ev) {
   document.getElementById('detail-color-dot').style.background = ev.color;
@@ -451,7 +457,7 @@ function showEventDetail(ev) {
   const end   = ev.end_time   ? new Date(ev.end_time)   : null;
 
   let body = '';
-  if (start) body += `<p style="font-size:13px;color:var(--text-2);margin-bottom:8px">📅 ${start.toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric'})}<br>🕐 ${formatTime(ev.start_time)}${end ? ' – ' + formatTime(ev.end_time) : ''}</p>`;
+  if (start) body += `<p style="font-size:13px;color:var(--text-2);margin-bottom:8px">📅 ${start.toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric'})}<br>🕐 ${formatTime(ev.start_time)}${end ? ' – ' + formatTime(ev.end_time) : ''} <span style="font-size:11px;color:var(--text-3)">${tzAbbr(start)}</span></p>`;
   if (ev.location)  body += `<p style="font-size:13px;color:var(--text-3);margin-bottom:8px">📍 ${ev.location}</p>`;
   if (ev.description) body += `<p style="font-size:13px;color:var(--text-2)">${ev.description}</p>`;
   if (ev.recurrence_type !== 'NONE') body += `<p style="font-size:11px;color:var(--text-3);margin-top:8px">↻ Repeats ${ev.recurrence_type.toLowerCase()}</p>`;
@@ -478,7 +484,7 @@ function showOutlookDetail(ev) {
   if (start) {
     body += `<p style="font-size:13px;color:var(--text-2);margin-bottom:8px">
       📅 ${start.toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric'})}<br>
-      🕐 ${formatTime(ev.start_time)}${end ? ' – ' + formatTime(ev.end_time) : ''}
+      🕐 ${formatTime(ev.start_time)}${end ? ' – ' + formatTime(ev.end_time) : ''} <span style="font-size:11px;color:var(--text-3)">${tzAbbr(start)}</span>
     </p>`;
   }
   if (ev.location)    body += `<p style="font-size:13px;color:var(--text-3);margin-bottom:8px">📍 ${ev.location}</p>`;
