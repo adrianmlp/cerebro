@@ -292,7 +292,25 @@ document.addEventListener('keydown', e => { if (e.key === 'Escape' && chatFullsc
 
 // ── Daily Brief ──
 const PRIORITY_DOT = { URGENT: 'URGENT', HIGH: 'HIGH', NORMAL: 'NORMAL', BACKLOG: 'BACKLOG' };
-const BRIEF_CACHE_TTL = 3 * 60 * 60 * 1000; // 3 hours
+// Shorter TTL during US market hours so stock prices + market state stay fresh
+function getBriefCacheTTL() {
+  try {
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'America/New_York',
+      weekday: 'short', hour: 'numeric', minute: 'numeric', hour12: false,
+    }).formatToParts(new Date());
+    const weekday  = parts.find(p => p.type === 'weekday')?.value;
+    const hour     = parseInt(parts.find(p => p.type === 'hour')?.value   || '0');
+    const min      = parseInt(parts.find(p => p.type === 'minute')?.value || '0');
+    const isWeekday  = !['Sat','Sun'].includes(weekday);
+    const totalMin   = hour * 60 + min;
+    const inMarket   = isWeekday && totalMin >= 9*60+30 && totalMin < 16*60;  // 9:30–16:00 ET
+    const inExtended = isWeekday && totalMin >= 7*60    && totalMin < 20*60;  // pre/post 7am–8pm ET
+    if (inMarket)   return 15 * 60 * 1000;  // 15 min during regular trading
+    if (inExtended) return 30 * 60 * 1000;  // 30 min pre/post market
+  } catch { /* fall through */ }
+  return 3 * 60 * 60 * 1000;                // 3 hours overnight / weekends
+}
 
 function briefFmtTime(iso) {
   if (!iso) return '';
@@ -565,7 +583,7 @@ async function loadBrief(forceRefresh = false) {
 
   const cached   = getBriefCache();
   const cacheAge = cached ? Date.now() - cached.ts : Infinity;
-  const isStale  = cacheAge >= BRIEF_CACHE_TTL;
+  const isStale  = cacheAge >= getBriefCacheTTL();
 
   // Serve from cache immediately if fresh
   if (!forceRefresh && cached && !isStale) {
