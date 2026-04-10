@@ -10,9 +10,13 @@ function escHtml(s) {
 }
 
 // ── Tag Input helper ──
-function makeTagInput(wrapId, initialValue) {
+// sep: storage separator (default ','); when '||' commas are allowed in phrases
+function makeTagInput(wrapId, initialValue, sep = ',') {
   const wrap = document.getElementById(wrapId);
-  let tags = (initialValue || '').split(',').map(t => t.trim()).filter(Boolean);
+  const splitVal = v => sep === '||'
+    ? (v || '').split('||').map(t => t.trim()).filter(Boolean)
+    : (v || '').split(',').map(t => t.trim()).filter(Boolean);
+  let tags = splitVal(initialValue);
 
   function render() {
     wrap.innerHTML = '';
@@ -66,25 +70,27 @@ function makeTagInput(wrapId, initialValue) {
 
   render();
   return {
-    getValue: () => tags.join(', '),
-    setValue: v => { tags = (v || '').split(',').map(t => t.trim()).filter(Boolean); render(); },
+    getValue: () => sep === '||' ? tags.join('||') : tags.join(', '),
+    setValue: v => { tags = splitVal(v); render(); },
   };
 }
 
 // ── Load settings ──
-let tickersTag, teamsTag, topicsTag;
+let tickersTag, teamsTag, topicsTag, outlookStripTag;
 
 async function loadSettings() {
   try {
     const s = await apiFetch('/api/brief/settings');
-    tickersTag = makeTagInput('tickers-wrap', s.tickers || '');
-    teamsTag   = makeTagInput('teams-wrap',   s.teams   || '');
-    topicsTag  = makeTagInput('topics-wrap',  s.topics  || '');
+    tickersTag      = makeTagInput('tickers-wrap',       s.tickers            || '');
+    teamsTag        = makeTagInput('teams-wrap',         s.teams              || '');
+    topicsTag       = makeTagInput('topics-wrap',        s.topics             || '');
+    outlookStripTag = makeTagInput('outlook-strip-wrap', s.outlookTitleStrip  || '', '||');
     document.getElementById('weather-zip-input').value = s.weatherZip || '';
   } catch {
-    tickersTag = makeTagInput('tickers-wrap', '');
-    teamsTag   = makeTagInput('teams-wrap',   '');
-    topicsTag  = makeTagInput('topics-wrap',  '');
+    tickersTag      = makeTagInput('tickers-wrap',       '');
+    teamsTag        = makeTagInput('teams-wrap',         '');
+    topicsTag       = makeTagInput('topics-wrap',        '');
+    outlookStripTag = makeTagInput('outlook-strip-wrap', '', '||');
   }
 }
 
@@ -94,10 +100,11 @@ document.getElementById('brief-save-btn').addEventListener('click', async () => 
     await apiFetch('/api/brief/settings', {
       method: 'PUT',
       body: JSON.stringify({
-        tickers:    tickersTag.getValue(),
-        teams:      teamsTag.getValue(),
-        topics:     topicsTag.getValue(),
-        weatherZip: document.getElementById('weather-zip-input').value.trim(),
+        tickers:           tickersTag.getValue(),
+        teams:             teamsTag.getValue(),
+        topics:            topicsTag.getValue(),
+        weatherZip:        document.getElementById('weather-zip-input').value.trim(),
+        outlookTitleStrip: outlookStripTag.getValue(),
       }),
     });
     toast('Settings saved', 'success');
@@ -105,6 +112,11 @@ document.getElementById('brief-save-btn').addEventListener('click', async () => 
     toast(e.message || 'Save failed', 'error');
   }
 });
+
+// Second save button (Outlook Filters section) does the same full save
+document.getElementById('brief-save-btn-2').addEventListener('click', () =>
+  document.getElementById('brief-save-btn').click()
+);
 
 // ── Start ──
 loadSettings();
