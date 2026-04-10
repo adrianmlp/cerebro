@@ -197,50 +197,50 @@ async function saveNote() {
   }
 }
 
-document.getElementById('save-note-btn').addEventListener('click', saveNote);
+document.getElementById('save-note-btn')?.addEventListener('click', saveNote);
 
-document.getElementById('note-title').addEventListener('keydown', e => {
+document.getElementById('note-title')?.addEventListener('keydown', e => {
   if ((e.metaKey || e.ctrlKey) && e.key === 's') { e.preventDefault(); saveNote(); }
 });
 
 // ── Formatting toolbar ──
 function execFmt(cmd, val = null) {
-  document.getElementById('note-content').focus();
+  document.getElementById('note-content')?.focus();
   document.execCommand(cmd, false, val);
   updateToolbarState();
 }
 
 function updateToolbarState() {
-  document.getElementById('fmt-bold').classList.toggle('active', document.queryCommandState('bold'));
-  document.getElementById('fmt-italic').classList.toggle('active', document.queryCommandState('italic'));
-  document.getElementById('fmt-ul').classList.toggle('active', document.queryCommandState('insertUnorderedList'));
-  document.getElementById('fmt-ol').classList.toggle('active', document.queryCommandState('insertOrderedList'));
+  document.getElementById('fmt-bold')?.classList.toggle('active', document.queryCommandState('bold'));
+  document.getElementById('fmt-italic')?.classList.toggle('active', document.queryCommandState('italic'));
+  document.getElementById('fmt-ul')?.classList.toggle('active', document.queryCommandState('insertUnorderedList'));
+  document.getElementById('fmt-ol')?.classList.toggle('active', document.queryCommandState('insertOrderedList'));
   const block = document.queryCommandValue('formatBlock');
-  document.getElementById('fmt-h2').classList.toggle('active', block === 'h2');
-  document.getElementById('fmt-h3').classList.toggle('active', block === 'h3');
+  document.getElementById('fmt-h2')?.classList.toggle('active', block === 'h2');
+  document.getElementById('fmt-h3')?.classList.toggle('active', block === 'h3');
 }
 
-document.getElementById('fmt-bold').addEventListener('click',   () => execFmt('bold'));
-document.getElementById('fmt-italic').addEventListener('click', () => execFmt('italic'));
-document.getElementById('fmt-ul').addEventListener('click',     () => execFmt('insertUnorderedList'));
-document.getElementById('fmt-ol').addEventListener('click',     () => execFmt('insertOrderedList'));
-document.getElementById('fmt-h2').addEventListener('click', () => {
+document.getElementById('fmt-bold')?.addEventListener('click',   () => execFmt('bold'));
+document.getElementById('fmt-italic')?.addEventListener('click', () => execFmt('italic'));
+document.getElementById('fmt-ul')?.addEventListener('click',     () => execFmt('insertUnorderedList'));
+document.getElementById('fmt-ol')?.addEventListener('click',     () => execFmt('insertOrderedList'));
+document.getElementById('fmt-h2')?.addEventListener('click', () => {
   execFmt('formatBlock', document.queryCommandValue('formatBlock') === 'h2' ? 'p' : 'h2');
 });
-document.getElementById('fmt-h3').addEventListener('click', () => {
+document.getElementById('fmt-h3')?.addEventListener('click', () => {
   execFmt('formatBlock', document.queryCommandValue('formatBlock') === 'h3' ? 'p' : 'h3');
 });
 
 const noteContent = document.getElementById('note-content');
-noteContent.addEventListener('keydown', e => {
+noteContent?.addEventListener('keydown', e => {
   if ((e.metaKey || e.ctrlKey) && e.key === 's') { e.preventDefault(); saveNote(); }
   if ((e.metaKey || e.ctrlKey) && e.key === 'b') { e.preventDefault(); execFmt('bold'); }
   if ((e.metaKey || e.ctrlKey) && e.key === 'i') { e.preventDefault(); execFmt('italic'); }
 });
-noteContent.addEventListener('keyup',   updateToolbarState);
-noteContent.addEventListener('mouseup', updateToolbarState);
-noteContent.addEventListener('input',   () => { if (currentNoteId) setDirty(true); });
-document.getElementById('note-title').addEventListener('input', () => { if (currentNoteId) setDirty(true); });
+noteContent?.addEventListener('keyup',   updateToolbarState);
+noteContent?.addEventListener('mouseup', updateToolbarState);
+noteContent?.addEventListener('input',   () => { if (currentNoteId) setDirty(true); });
+document.getElementById('note-title')?.addEventListener('input', () => { if (currentNoteId) setDirty(true); });
 
 // ── Delete ──
 window.deleteNote = async function(id) {
