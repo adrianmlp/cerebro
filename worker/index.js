@@ -737,6 +737,17 @@ async function fetchOutlookEventsInRange(env, start, end) {
     return t.trim();
   }
 
+  // Build set of dates overridden by _RECUR_ entries, keyed by base uid
+  // e.g. "UID_RECUR_2026-04-09" → base "UID" has override on "2026-04-09"
+  const recurOverrides = new Map(); // baseUid → Set of override dates
+  for (const ev of allStored) {
+    const m = ev.uid.match(/^(.+)_RECUR_(\d{4}-\d{2}-\d{2})$/);
+    if (m) {
+      if (!recurOverrides.has(m[1])) recurOverrides.set(m[1], new Set());
+      recurOverrides.get(m[1]).add(m[2]);
+    }
+  }
+
   const out = [];
   for (const ev of allStored) {
     if (hiddenUids.has(ev.uid)) continue;
@@ -747,7 +758,15 @@ async function fetchOutlookEventsInRange(env, start, end) {
       if (d >= start && d <= end) out.push(cleaned);
     } else {
       const rrule = parseRRule(ev.recurrence_rule);
-      if (rrule) out.push(...generateOutlookInstances(cleaned, rrule, start, end));
+      if (!rrule) continue;
+      // Merge _RECUR_ override dates into exceptions so parent won't generate a duplicate
+      const overrideDates = recurOverrides.get(ev.uid);
+      if (overrideDates?.size) {
+        const existingExceptions = new Set(JSON.parse(cleaned.recurrence_exceptions || '[]'));
+        overrideDates.forEach(d => existingExceptions.add(d));
+        cleaned.recurrence_exceptions = JSON.stringify([...existingExceptions]);
+      }
+      out.push(...generateOutlookInstances(cleaned, rrule, start, end));
     }
   }
   out.sort((a, b) => new Date(a.start_time) - new Date(b.start_time));
