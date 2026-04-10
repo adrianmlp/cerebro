@@ -459,7 +459,7 @@ const HOURS = Array.from({length:16}, (_,i) => i+7); // 7am–10pm
 const TG_START  = 7;
 const TG_END    = 23;
 const TG_NHOURS = TG_END - TG_START;
-const TG_ROW_H  = 64;   // px per hour
+const TG_ROW_H  = 80;   // px per hour
 const TG_TOTAL  = TG_NHOURS * TG_ROW_H;
 
 // Build grid-line HTML for one column
@@ -508,7 +508,7 @@ function tgBlock(item, isWork, dataAttr) {
   const { e, startMin, endMin, col, totalCols } = item;
   const end    = e.end_time ? new Date(e.end_time) : null;
   const top    = (Math.max(0, startMin) / 60 * TG_ROW_H).toFixed(1);
-  const height = Math.max(20, (endMin - Math.max(0, startMin)) / 60 * TG_ROW_H).toFixed(1);
+  const height = Math.max(TG_ROW_H / 2, (endMin - Math.max(0, startMin)) / 60 * TG_ROW_H).toFixed(1);
   const color  = isWork ? '#0EA5E9' : e.color;
   const time   = `${formatTime(e.start_time)}${end ? ' – ' + formatTime(e.end_time) : ''}`;
   const posStyle = totalCols > 1
