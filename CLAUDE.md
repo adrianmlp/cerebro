@@ -23,7 +23,7 @@ Personal productivity dashboard. Cloudflare Pages (frontend) + Worker (API) + D1
 | `api.js` | `apiFetch()`, `toast()`, date/priority helpers |
 | `nav.js` | Nav + hamburger |
 | `style.css` | Deep Ocean dark theme, design tokens |
-| `sw.js` | Service worker (currently `cerebro-v25`) |
+| `sw.js` | Service worker (currently `cerebro-v41`) |
 
 ## DB Schema
 ```sql

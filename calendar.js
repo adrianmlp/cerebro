@@ -142,11 +142,11 @@ function refreshDayModal() {
   if (!dayModalDate) return;
   const body = document.getElementById('day-modal-body');
 
-  const START_H  = 7;
-  const END_H    = 23;   // exclusive (renders up to 11 PM line)
-  const N_HOURS  = END_H - START_H;
-  const ROW_H    = 64;   // px per hour
-  const TOTAL_H  = N_HOURS * ROW_H;
+  const START_H  = TG_START;
+  const END_H    = TG_END;
+  const N_HOURS  = TG_NHOURS;
+  const ROW_H    = TG_ROW_H;
+  const TOTAL_H  = TG_TOTAL;
 
   const dayPersonal = events.filter(e => e.start_time?.startsWith(dayModalDate));
   const dayWork     = outlookEvents.filter(e => e.start_time?.startsWith(dayModalDate));
@@ -163,74 +163,6 @@ function refreshDayModal() {
   for (let h = START_H; h < END_H; h++) {
     const label = h === 12 ? '12 PM' : h < 12 ? `${h} AM` : `${h - 12} PM`;
     labelsHtml += `<div class="dtg-label" style="top:${(h - START_H) * ROW_H}px">${label}</div>`;
-  }
-
-  // Build grid lines (per column, same for both)
-  function gridLines() {
-    let s = '';
-    for (let i = 0; i < N_HOURS; i++) {
-      s += `<div class="dtg-hour-line" style="top:${i * ROW_H}px"></div>`;
-      s += `<div class="dtg-half-line" style="top:${i * ROW_H + ROW_H / 2}px"></div>`;
-    }
-    return s;
-  }
-
-  // Compute overlap columns so simultaneous events sit side-by-side
-  function layoutEvents(evList) {
-    const items = evList.map(e => {
-      const start    = new Date(e.start_time);
-      const end      = e.end_time ? new Date(e.end_time) : null;
-      const startMin = start.getHours() * 60 + start.getMinutes() - START_H * 60;
-      const endMin   = end
-        ? end.getHours() * 60 + end.getMinutes() - START_H * 60
-        : startMin + 60;
-      return { e, startMin, endMin: Math.max(startMin + 15, endMin) };
-    }).filter(item => item.endMin > 0 && item.startMin < N_HOURS * 60);
-
-    items.sort((a, b) => a.startMin - b.startMin || b.endMin - a.endMin);
-
-    // Greedy column assignment
-    const colEnds = [];
-    items.forEach(item => {
-      let col = colEnds.findIndex(end => end <= item.startMin);
-      if (col === -1) col = colEnds.length;
-      colEnds[col] = item.endMin;
-      item.col = col;
-    });
-
-    // totalCols per event = widest overlap group it belongs to
-    items.forEach(item => {
-      item.totalCols = items
-        .filter(o => o.startMin < item.endMin && o.endMin > item.startMin)
-        .reduce((m, o) => Math.max(m, o.col + 1), 1);
-    });
-
-    return items;
-  }
-
-  // Build a timed event block with overlap-aware positioning
-  function timedBlock(item, isWork) {
-    const { e, startMin, endMin, col, totalCols } = item;
-    const end   = e.end_time ? new Date(e.end_time) : null;
-    const top   = (Math.max(0, startMin) / 60 * ROW_H).toFixed(1);
-    const height = Math.max(20, (endMin - Math.max(0, startMin)) / 60 * ROW_H).toFixed(1);
-    const color = isWork ? '#0EA5E9' : e.color;
-    const time  = `${formatTime(e.start_time)}${end ? ' – ' + formatTime(e.end_time) : ''}`;
-    const data  = isWork
-      ? `data-outlook-uid="${e.uid}" data-day-instance="${e._instanceDate || ''}"`
-      : `data-day-event-id="${e.id}" data-day-instance="${e._instanceDate || ''}"`;
-
-    // Side-by-side columns when overlapping
-    const pctW = (100 / totalCols).toFixed(2);
-    const pctL = (col / totalCols * 100).toFixed(2);
-    const posStyle = totalCols > 1
-      ? `left:calc(${pctL}% + 2px);width:calc(${pctW}% - 4px);right:auto`
-      : `left:3px;right:3px`;
-
-    return `<div class="dtg-event" style="top:${top}px;height:${height}px;background:${color};${posStyle}" ${data}>
-      <span class="dtg-event-title">${e.title}</span>
-      <span class="dtg-event-time">${time}</span>
-    </div>`;
   }
 
   // All-day chips (flat list at top)
@@ -263,18 +195,20 @@ function refreshDayModal() {
     </div>`;
   }
 
-  const workLaid = layoutEvents(workTimed);
-  const persLaid = layoutEvents(persTimed);
+  const workLaid = tgLayout(workTimed);
+  const persLaid = tgLayout(persTimed);
+  const workDataAttr = e => `data-outlook-uid="${e.uid}" data-day-instance="${e._instanceDate || ''}"`;
+  const persDataAttr = e => `data-day-event-id="${e.id}" data-day-instance="${e._instanceDate || ''}"`;
 
   html += `<div class="dtg-wrap" style="height:${TOTAL_H}px">
     <div class="dtg-labels">${labelsHtml}</div>
     <div class="dtg-col dtg-work-col">
-      ${gridLines()}
-      ${workLaid.map(item => timedBlock(item, true)).join('')}
+      ${tgGridLines()}
+      ${workLaid.map(item => tgBlock(item, true, workDataAttr)).join('')}
     </div>
     <div class="dtg-col dtg-pers-col" id="dtg-pers-col">
-      ${gridLines()}
-      ${persLaid.map(item => timedBlock(item, false)).join('')}
+      ${tgGridLines()}
+      ${persLaid.map(item => tgBlock(item, false, persDataAttr)).join('')}
     </div>
   </div>`;
 
@@ -521,6 +455,71 @@ function renderMonth() {
 // ── Split view (week + day) ──
 const HOURS = Array.from({length:16}, (_,i) => i+7); // 7am–10pm
 
+// Time-grid constants (shared by renderTimeGrid + refreshDayModal)
+const TG_START  = 7;
+const TG_END    = 23;
+const TG_NHOURS = TG_END - TG_START;
+const TG_ROW_H  = 64;   // px per hour
+const TG_TOTAL  = TG_NHOURS * TG_ROW_H;
+
+// Build grid-line HTML for one column
+function tgGridLines() {
+  let s = '';
+  for (let i = 0; i < TG_NHOURS; i++) {
+    s += `<div class="dtg-hour-line" style="top:${i * TG_ROW_H}px"></div>`;
+    s += `<div class="dtg-half-line" style="top:${i * TG_ROW_H + TG_ROW_H / 2}px"></div>`;
+  }
+  return s;
+}
+
+// Compute overlap columns so simultaneous events sit side-by-side
+function tgLayout(evList) {
+  const items = evList.map(e => {
+    const start    = new Date(e.start_time);
+    const end      = e.end_time ? new Date(e.end_time) : null;
+    const startMin = start.getHours() * 60 + start.getMinutes() - TG_START * 60;
+    const endMin   = end
+      ? end.getHours() * 60 + end.getMinutes() - TG_START * 60
+      : startMin + 60;
+    return { e, startMin, endMin: Math.max(startMin + 15, endMin) };
+  }).filter(item => item.endMin > 0 && item.startMin < TG_NHOURS * 60);
+
+  items.sort((a, b) => a.startMin - b.startMin || b.endMin - a.endMin);
+
+  const colEnds = [];
+  items.forEach(item => {
+    let col = colEnds.findIndex(end => end <= item.startMin);
+    if (col === -1) col = colEnds.length;
+    colEnds[col] = item.endMin;
+    item.col = col;
+  });
+
+  items.forEach(item => {
+    item.totalCols = items
+      .filter(o => o.startMin < item.endMin && o.endMin > item.startMin)
+      .reduce((m, o) => Math.max(m, o.col + 1), 1);
+  });
+
+  return items;
+}
+
+// Build one absolutely-positioned event block
+function tgBlock(item, isWork, dataAttr) {
+  const { e, startMin, endMin, col, totalCols } = item;
+  const end    = e.end_time ? new Date(e.end_time) : null;
+  const top    = (Math.max(0, startMin) / 60 * TG_ROW_H).toFixed(1);
+  const height = Math.max(20, (endMin - Math.max(0, startMin)) / 60 * TG_ROW_H).toFixed(1);
+  const color  = isWork ? '#0EA5E9' : e.color;
+  const time   = `${formatTime(e.start_time)}${end ? ' – ' + formatTime(e.end_time) : ''}`;
+  const posStyle = totalCols > 1
+    ? `left:calc(${(col / totalCols * 100).toFixed(2)}% + 2px);width:calc(${(100 / totalCols).toFixed(2)}% - 4px);right:auto`
+    : `left:3px;right:3px`;
+  return `<div class="dtg-event" style="top:${top}px;height:${height}px;background:${color};${posStyle}" ${dataAttr(e)}>
+    <span class="dtg-event-title">${e.title}</span>
+    <span class="dtg-event-time">${time}</span>
+  </div>`;
+}
+
 function getColumns(mode) {
   if (mode === 'week') {
     const d = new Date(cursor);
@@ -531,53 +530,56 @@ function getColumns(mode) {
 }
 
 function renderTimeGrid(mode, cols, sourceEvents, isWork) {
-  const todayStr  = localDateStr();
-  const colCount  = cols.length;
-  const color     = isWork ? '#0EA5E9' : null; // work events always sky blue
+  const todayStr = localDateStr();
 
-  let html = `<div class="cal-time-grid${mode==='week'?' week-view':''}" style="grid-template-columns:48px repeat(${colCount},1fr)">`;
+  // Time labels (left gutter)
+  let labelsHtml = '';
+  for (let h = TG_START; h < TG_END; h++) {
+    const label = h === 12 ? '12 PM' : h < 12 ? `${h} AM` : `${h - 12} PM`;
+    labelsHtml += `<div class="dtg-label" style="top:${(h - TG_START) * TG_ROW_H}px">${label}</div>`;
+  }
 
-  // Header
-  html += `<div class="time-label" style="height:44px;border-bottom:1px solid var(--border)"></div>`;
+  // Header row
+  let headerHtml = `<div class="rtg-header">
+    <div class="rtg-header-spacer"></div>`;
   cols.forEach(d => {
     const ds      = localDateStr(d);
     const isToday = ds === todayStr;
-    html += `<div class="cal-col-header${isToday?' today':''}" style="height:44px">
+    headerHtml += `<div class="cal-col-header${isToday ? ' today' : ''}">
       <div>${DAYS[d.getDay()]}</div>
       <div class="cal-col-header-date">${d.getDate()}</div>
     </div>`;
   });
+  headerHtml += `</div>`;
 
-  // Time rows
-  HOURS.forEach(h => {
-    const label = h === 12 ? '12 PM' : h < 12 ? `${h} AM` : `${h-12} PM`;
-    html += `<div class="time-label">${label}</div>`;
-    cols.forEach(d => {
-      const ds         = localDateStr(d);
-      const slotEvents = sourceEvents.filter(e => {
-        const eDate = e.start_time?.split('T')[0];
-        const eHour = e.start_time ? new Date(e.start_time).getHours() : null;
-        return eDate === ds && eHour === h;
-      });
-
-      const evHtml = slotEvents.map(e => {
-        const c   = color || e.color;
-        const uid = e.uid;
-        const id  = e.id;
-        return isWork
-          ? `<div class="time-event work-time-event" style="background:${c}" data-outlook-uid="${uid}" data-instance="${e._instanceDate||''}">${e.title}</div>`
-          : `<div class="time-event" style="background:${c}" data-event-id="${id}" data-instance="${e._instanceDate||''}">${e.title}</div>`;
-      }).join('');
-
-      // Only personal slots are clickable to add events
-      html += isWork
-        ? `<div class="time-slot work-slot">${evHtml}</div>`
-        : `<div class="time-slot" data-date="${ds}" data-hour="${h}">${evHtml}</div>`;
+  // Day columns
+  let colsHtml = '';
+  cols.forEach(d => {
+    const ds        = localDateStr(d);
+    const dayEvents = sourceEvents.filter(e => {
+      if (!e.start_time?.includes('T')) return false;
+      const eDate = e.start_time.split('T')[0];
+      return eDate === ds;
     });
+    const laid = tgLayout(dayEvents);
+    const dataAttr = isWork
+      ? e => `data-outlook-uid="${e.uid}" data-instance="${e._instanceDate || ''}"`
+      : e => `data-event-id="${e.id}" data-instance="${e._instanceDate || ''}"`;
+    const colClass = isWork ? 'dtg-col' : 'dtg-col dtg-pers-col';
+    const colData  = isWork ? '' : `data-date="${ds}"`;
+    colsHtml += `<div class="${colClass}" ${colData}>
+      ${tgGridLines()}
+      ${laid.map(item => tgBlock(item, isWork, dataAttr)).join('')}
+    </div>`;
   });
 
-  html += '</div>';
-  return html;
+  return `<div class="rtg-container">
+    ${headerHtml}
+    <div class="dtg-wrap" style="height:${TG_TOTAL}px">
+      <div class="dtg-labels">${labelsHtml}</div>
+      ${colsHtml}
+    </div>
+  </div>`;
 }
 
 function renderSplitView(mode) {
@@ -615,11 +617,17 @@ function attachCellClicks() {
     });
   });
 
-  // Personal time slots → add event
-  document.querySelectorAll('.time-slot[data-date]').forEach(cell => {
-    cell.addEventListener('click', e => {
+  // Personal day columns → click to add event (absolute position → compute time from Y offset)
+  document.querySelectorAll('.dtg-col.dtg-pers-col[data-date]').forEach(col => {
+    col.addEventListener('click', e => {
       if (e.target.closest('[data-event-id]')) return;
-      openEventModal({ date: cell.dataset.date, startTime: String(cell.dataset.hour).padStart(2,'0') + ':00' });
+      const rect   = col.getBoundingClientRect();
+      const y      = e.clientY - rect.top;
+      const raw    = y / TG_ROW_H * 60 + TG_START * 60;
+      const snapped = Math.min(Math.max(0, Math.round(raw / 15) * 15), TG_END * 60 - 15);
+      const hh     = String(Math.floor(snapped / 60)).padStart(2, '0');
+      const mm     = String(snapped % 60).padStart(2, '0');
+      openEventModal({ date: col.dataset.date, startTime: `${hh}:${mm}` });
     });
   });
 

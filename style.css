@@ -761,6 +761,26 @@ body {
   border-right: 1px solid var(--border);
 }
 
+/* Absolute-positioned time grid (day/week split view) */
+.rtg-container {
+  border: 1px solid var(--border);
+  border-radius: var(--r-card);
+  overflow: hidden;
+  background: var(--card-to);
+}
+.cal-split-panel .rtg-container { border: none; border-radius: 0; }
+
+.rtg-header {
+  display: flex;
+  border-bottom: 1px solid var(--border);
+}
+.rtg-header-spacer {
+  width: 56px;
+  flex-shrink: 0;
+  border-right: 1px solid var(--border);
+}
+.rtg-header .cal-col-header { flex: 1; }
+
 .time-label {
   height: 60px;
   display: flex;
