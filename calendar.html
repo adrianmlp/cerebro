@@ -46,18 +46,19 @@
     <div style="margin-left:auto;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
       <button class="cal-toggle" id="toggle-work" title="Toggle work events">🏢 Work</button>
       <button class="cal-toggle" id="toggle-personal" title="Toggle personal events">🏠 Personal</button>
+      <!-- Tag filter dropdown -->
+      <div class="cal-tag-dropdown-wrap" id="cal-tag-dropdown-wrap">
+        <button class="btn btn-ghost btn-sm cal-tag-btn" id="cal-tag-btn">🏷 <span id="cal-tag-label">Tags</span></button>
+        <div class="cal-tag-dropdown" id="cal-tag-dropdown">
+          <div id="cal-tag-pills"></div>
+          <div id="cal-tag-empty" style="display:none;font-size:12px;color:var(--text-3);padding:8px 4px">No tags yet — add tags when creating events</div>
+        </div>
+      </div>
       <span class="sync-status-text" id="sync-status-text"></span>
       <button class="btn btn-ghost btn-sm" id="sync-btn" title="Sync Outlook calendar">⟳ Sync</button>
       <button class="btn btn-ghost btn-sm" id="hidden-events-btn" title="Manage hidden work events">🚫 Hidden</button>
       <button class="btn btn-primary btn-sm" id="add-event-btn">+ Add Event</button>
     </div>
-  </div>
-
-  <!-- Tag filter row (only visible when tagged events exist) -->
-  <div id="cal-tag-filter" style="display:none;align-items:center;gap:8px;flex-wrap:wrap;padding:6px 0 10px;border-bottom:1px solid var(--border);margin-bottom:12px">
-    <span style="font-size:11px;color:var(--text-3);font-weight:600;text-transform:uppercase;letter-spacing:.05em">🏷 Tags</span>
-    <div id="cal-tag-pills" style="display:flex;gap:6px;flex-wrap:wrap"></div>
-    <button class="btn btn-ghost btn-sm" id="cal-tag-clear" style="display:none;padding:2px 8px;font-size:11px">✕ Clear</button>
   </div>
 
   <!-- Calendar content -->
