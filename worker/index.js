@@ -528,11 +528,18 @@ function parseICS(text) {
       if (d) exdates.push(d.iso.split('T')[0]);
     }
 
-    // Skip exception/override entries (RECURRENCE-ID present) — we handle them via EXDATE
-    if (block.match(/^RECURRENCE-ID/m)) continue;
+    // RECURRENCE-ID events are modified/rescheduled instances of a recurring series.
+    // Include them as standalone events with a unique uid so they appear on their
+    // actual (rescheduled) date. The parent series already has an EXDATE for the
+    // original date, so generateOutlookInstances won't double-show it.
+    const recurIdLine = block.match(/^(RECURRENCE-ID[^:\n]*:[^\n]+)$/m)?.[1];
+    const recurIdParsed = recurIdLine ? parseICSDateLine(recurIdLine, vtimezones) : null;
+    const effectiveUid = recurIdParsed
+      ? `${uid.trim()}_RECUR_${recurIdParsed.iso.split('T')[0]}`
+      : uid.trim();
 
     events.push({
-      uid:                   uid.trim(),
+      uid:                   effectiveUid,
       title:                 unescapeICS(getICSProp(block, 'SUMMARY')     || ''),
       description:           unescapeICS(getICSProp(block, 'DESCRIPTION') || ''),
       organizer:             orgCN.trim(),
@@ -540,7 +547,8 @@ function parseICS(text) {
       start_time:            dtStart?.iso  || null,
       end_time:              dtEnd?.iso    || null,
       is_all_day:            dtStart?.allDay ? 1 : 0,
-      recurrence_rule:       getICSProp(block, 'RRULE') || null,
+      // Recurrence-ID instances are standalone — don't carry the parent's RRULE
+      recurrence_rule:       recurIdParsed ? null : (getICSProp(block, 'RRULE') || null),
       recurrence_exceptions: exdates.length ? JSON.stringify(exdates) : '[]',
       event_tzid:            dtStartTzid,
       local_start:           localStart,
@@ -666,20 +674,27 @@ async function syncOutlook(env) {
       const text   = await res.text();
       const events = parseICS(text);
 
+      let inserted = 0;
       for (const ev of events) {
-        await env.DB.prepare(
-          `INSERT OR REPLACE INTO outlook_events
-           (uid, title, description, organizer, location, start_time, end_time, is_all_day, recurrence_rule, recurrence_exceptions, event_tzid, local_start, synced_at)
-           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`
-        ).bind(
-          ev.uid, ev.title, ev.description, ev.organizer, ev.location,
-          ev.start_time, ev.end_time, ev.is_all_day,
-          ev.recurrence_rule, ev.recurrence_exceptions,
-          ev.event_tzid || null, ev.local_start || null,
-          syncTime
-        ).run();
+        if (!ev.start_time) continue; // skip malformed events
+        try {
+          await env.DB.prepare(
+            `INSERT OR REPLACE INTO outlook_events
+             (uid, title, description, organizer, location, start_time, end_time, is_all_day, recurrence_rule, recurrence_exceptions, event_tzid, local_start, synced_at)
+             VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`
+          ).bind(
+            ev.uid, ev.title, ev.description, ev.organizer, ev.location,
+            ev.start_time, ev.end_time, ev.is_all_day,
+            ev.recurrence_rule, ev.recurrence_exceptions,
+            ev.event_tzid || null, ev.local_start || null,
+            syncTime
+          ).run();
+          inserted++;
+        } catch (evErr) {
+          errors.push(`uid=${ev.uid}: ${evErr.message}`);
+        }
       }
-      totalCount += events.length;
+      totalCount += inserted;
     } catch (e) {
       errors.push(e.message);
     }
@@ -736,7 +751,15 @@ async function fetchOutlookEventsInRange(env, start, end) {
     }
   }
   out.sort((a, b) => new Date(a.start_time) - new Date(b.start_time));
-  return out;
+
+  // Deduplicate: same title + same start_time = same meeting from two ICS feeds
+  const seen = new Set();
+  return out.filter(ev => {
+    const key = `${ev.start_time}|${ev.title}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 // ── Personal-event recurring helpers (unchanged) ──
