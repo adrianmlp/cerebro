@@ -132,7 +132,7 @@ Brief grid: 4 stocks/row desktop → 2 mobile; 3 scores/row desktop → 1 mobile
 - **Outlook sync:** Cron `0 */6 * * *`. ICS → `outlook_events` → instances at query time.
 - **AI Chat:** `chat` mode (create tasks/events) + `transcript` mode (extract from meeting notes). Tasks/events/notes injected into system prompt.
 - **Settings page:** Tag-input UI (`makeTagInput()`). Saves comma-separated via `PUT /api/brief/settings` (now includes `weatherZip`).
-- **Cherry-pick workflow:** Feature branch `claude/thirsty-poitras` → cherry-pick commits to `main` for Pages deploy.
+- **Cherry-pick workflow:** Feature branch `claude/thirsty-poitras` → cherry-pick commits to `main` for Pages deploy. **Always do this automatically after every commit — do not wait to be asked.** Use `git cherry-pick` from the main worktree (`C:/Users/admau/Claude/cerebro`) since `main` is checked out there; can't `checkout main` inside the worktree.
 
 ## Applied Learning
 - Google News RSS blocks CF Worker IPs; use Bing RSS with Google fallback.
