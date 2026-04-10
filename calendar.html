@@ -44,11 +44,20 @@
       <button data-view="day">Day</button>
     </div>
     <div style="margin-left:auto;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+      <button class="cal-toggle" id="toggle-work" title="Toggle work events">🏢 Work</button>
+      <button class="cal-toggle" id="toggle-personal" title="Toggle personal events">🏠 Personal</button>
       <span class="sync-status-text" id="sync-status-text"></span>
       <button class="btn btn-ghost btn-sm" id="sync-btn" title="Sync Outlook calendar">⟳ Sync</button>
       <button class="btn btn-ghost btn-sm" id="hidden-events-btn" title="Manage hidden work events">🚫 Hidden</button>
       <button class="btn btn-primary btn-sm" id="add-event-btn">+ Add Event</button>
     </div>
+  </div>
+
+  <!-- Tag filter row (only visible when tagged events exist) -->
+  <div id="cal-tag-filter" style="display:none;align-items:center;gap:8px;flex-wrap:wrap;padding:6px 0 10px;border-bottom:1px solid var(--border);margin-bottom:12px">
+    <span style="font-size:11px;color:var(--text-3);font-weight:600;text-transform:uppercase;letter-spacing:.05em">🏷 Tags</span>
+    <div id="cal-tag-pills" style="display:flex;gap:6px;flex-wrap:wrap"></div>
+    <button class="btn btn-ghost btn-sm" id="cal-tag-clear" style="display:none;padding:2px 8px;font-size:11px">✕ Clear</button>
   </div>
 
   <!-- Calendar content -->
