@@ -175,23 +175,59 @@ function refreshDayModal() {
     return s;
   }
 
-  // Build a timed event block
-  function timedBlock(e, isWork) {
-    const start    = new Date(e.start_time);
-    const end      = e.end_time ? new Date(e.end_time) : null;
-    const startMin = start.getHours() * 60 + start.getMinutes() - START_H * 60;
-    const endMin   = end
-      ? end.getHours() * 60 + end.getMinutes() - START_H * 60
-      : startMin + 60;
-    if (startMin >= N_HOURS * 60 || endMin <= 0) return '';
-    const top    = Math.max(0, startMin / 60 * ROW_H).toFixed(1);
-    const height = Math.max(20, (endMin - startMin) / 60 * ROW_H).toFixed(1);
-    const color  = isWork ? '#0EA5E9' : e.color;
-    const time   = `${formatTime(e.start_time)}${end ? ' – ' + formatTime(e.end_time) : ''}`;
-    const data   = isWork
+  // Compute overlap columns so simultaneous events sit side-by-side
+  function layoutEvents(evList) {
+    const items = evList.map(e => {
+      const start    = new Date(e.start_time);
+      const end      = e.end_time ? new Date(e.end_time) : null;
+      const startMin = start.getHours() * 60 + start.getMinutes() - START_H * 60;
+      const endMin   = end
+        ? end.getHours() * 60 + end.getMinutes() - START_H * 60
+        : startMin + 60;
+      return { e, startMin, endMin: Math.max(startMin + 15, endMin) };
+    }).filter(item => item.endMin > 0 && item.startMin < N_HOURS * 60);
+
+    items.sort((a, b) => a.startMin - b.startMin || b.endMin - a.endMin);
+
+    // Greedy column assignment
+    const colEnds = [];
+    items.forEach(item => {
+      let col = colEnds.findIndex(end => end <= item.startMin);
+      if (col === -1) col = colEnds.length;
+      colEnds[col] = item.endMin;
+      item.col = col;
+    });
+
+    // totalCols per event = widest overlap group it belongs to
+    items.forEach(item => {
+      item.totalCols = items
+        .filter(o => o.startMin < item.endMin && o.endMin > item.startMin)
+        .reduce((m, o) => Math.max(m, o.col + 1), 1);
+    });
+
+    return items;
+  }
+
+  // Build a timed event block with overlap-aware positioning
+  function timedBlock(item, isWork) {
+    const { e, startMin, endMin, col, totalCols } = item;
+    const end   = e.end_time ? new Date(e.end_time) : null;
+    const top   = (Math.max(0, startMin) / 60 * ROW_H).toFixed(1);
+    const height = Math.max(20, (endMin - Math.max(0, startMin)) / 60 * ROW_H).toFixed(1);
+    const color = isWork ? '#0EA5E9' : e.color;
+    const time  = `${formatTime(e.start_time)}${end ? ' – ' + formatTime(e.end_time) : ''}`;
+    const data  = isWork
       ? `data-outlook-uid="${e.uid}" data-day-instance="${e._instanceDate || ''}"`
       : `data-day-event-id="${e.id}" data-day-instance="${e._instanceDate || ''}"`;
-    return `<div class="dtg-event" style="top:${top}px;height:${height}px;background:${color}" ${data}>
+
+    // Side-by-side columns when overlapping
+    const pctW = (100 / totalCols).toFixed(2);
+    const pctL = (col / totalCols * 100).toFixed(2);
+    const posStyle = totalCols > 1
+      ? `left:calc(${pctL}% + 2px);width:calc(${pctW}% - 4px);right:auto`
+      : `left:3px;right:3px`;
+
+    return `<div class="dtg-event" style="top:${top}px;height:${height}px;background:${color};${posStyle}" ${data}>
       <span class="dtg-event-title">${e.title}</span>
       <span class="dtg-event-time">${time}</span>
     </div>`;
@@ -227,15 +263,18 @@ function refreshDayModal() {
     </div>`;
   }
 
+  const workLaid = layoutEvents(workTimed);
+  const persLaid = layoutEvents(persTimed);
+
   html += `<div class="dtg-wrap" style="height:${TOTAL_H}px">
     <div class="dtg-labels">${labelsHtml}</div>
     <div class="dtg-col dtg-work-col">
       ${gridLines()}
-      ${workTimed.map(e => timedBlock(e, true)).join('')}
+      ${workLaid.map(item => timedBlock(item, true)).join('')}
     </div>
     <div class="dtg-col dtg-pers-col" id="dtg-pers-col">
       ${gridLines()}
-      ${persTimed.map(e => timedBlock(e, false)).join('')}
+      ${persLaid.map(item => timedBlock(item, false)).join('')}
     </div>
   </div>`;
 
@@ -877,11 +916,27 @@ document.querySelector('.segmented').addEventListener('click', e => {
   if (!btn) return;
   calView = btn.dataset.view;
   document.querySelectorAll('.segmented button').forEach(b => b.classList.toggle('active', b === btn));
-  if (calView !== 'day') { cursor = new Date(); cursor.setDate(1); }
+  cursor = new Date();
+  if (calView !== 'day') cursor.setDate(1);
   loadEvents();
 });
 
 document.getElementById('add-event-btn').addEventListener('click', () => openEventModal({ date: localDateStr(cursor) }));
+
+// ── Swipe navigation (mobile) ──
+let _swipeX = 0, _swipeY = 0;
+document.getElementById('cal-content').addEventListener('touchstart', e => {
+  _swipeX = e.touches[0].clientX;
+  _swipeY = e.touches[0].clientY;
+}, { passive: true });
+document.getElementById('cal-content').addEventListener('touchend', e => {
+  const dx = e.changedTouches[0].clientX - _swipeX;
+  const dy = e.changedTouches[0].clientY - _swipeY;
+  if (Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy) * 1.5) {
+    if (dx < 0) document.getElementById('next-btn').click();
+    else         document.getElementById('prev-btn').click();
+  }
+}, { passive: true });
 
 // ── Init ──
 loadEvents();

@@ -869,8 +869,11 @@ body {
   font-family: var(--font-head);
   font-size: 15px;
   font-weight: 700;
-  min-width: 160px;
+  width: 230px;       /* fixed so arrows never shift between month/week/day labels */
   text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* ─────────────────────────────
