@@ -20,6 +20,47 @@ let notesNoteId    = null;
 let notesSaveTimer = null;
 let dayModalDate   = null;
 let outlookDetailEv = null;       // Outlook event currently shown in detail modal
+let eventTagInput  = null;        // tag-input instance for the event modal
+
+// ── Tag input helper (shared with settings.js) ──
+function _escHtml(s) {
+  return (s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function makeTagInput(wrapId, initialValue) {
+  const wrap = document.getElementById(wrapId);
+  let tags = (initialValue || '').split(',').map(t => t.trim()).filter(Boolean);
+  function render() {
+    wrap.innerHTML = '';
+    tags.forEach((tag, i) => {
+      const pill = document.createElement('span');
+      pill.className = 'tag-pill';
+      pill.innerHTML = `${_escHtml(tag)}<button class="tag-pill-remove" aria-label="Remove" data-i="${i}">×</button>`;
+      wrap.appendChild(pill);
+    });
+    const inp = document.createElement('input');
+    inp.className = 'tag-input-field';
+    inp.placeholder = tags.length ? '' : 'Type and press Enter…';
+    wrap.appendChild(inp);
+    wrap.querySelectorAll('.tag-pill-remove').forEach(btn => {
+      btn.addEventListener('click', e => { e.stopPropagation(); tags.splice(+btn.dataset.i, 1); render(); });
+    });
+    inp.addEventListener('keydown', e => {
+      if (e.key === 'Enter' || e.key === ',') {
+        e.preventDefault();
+        const v = inp.value.replace(/,+$/, '').trim();
+        if (v && !tags.map(t => t.toLowerCase()).includes(v.toLowerCase())) { tags.push(v); render(); wrap.querySelector('.tag-input-field')?.focus(); }
+        else inp.value = '';
+      } else if (e.key === 'Backspace' && inp.value === '' && tags.length) { tags.pop(); render(); }
+    });
+    inp.addEventListener('blur', () => {
+      const v = inp.value.replace(/,+$/, '').trim();
+      if (v && !tags.map(t => t.toLowerCase()).includes(v.toLowerCase())) { tags.push(v); render(); }
+    });
+    wrap.addEventListener('click', () => wrap.querySelector('.tag-input-field')?.focus());
+  }
+  render();
+  return { getValue: () => tags.join(', '), setValue: v => { tags = (v||'').split(',').map(t=>t.trim()).filter(Boolean); render(); } };
+}
 
 // ── Color picker ──
 function buildColorPicker() {
@@ -50,10 +91,12 @@ function openEventModal(defaults = {}) {
   document.getElementById('event-title').value             = defaults.title || '';
   document.getElementById('event-desc').value              = defaults.description || '';
   document.getElementById('event-date').value              = defaults.date || localDateStr();
+  document.getElementById('event-end-date').value          = defaults.endDate || '';
   document.getElementById('event-start').value             = defaults.startTime || '';
   document.getElementById('event-end').value               = defaults.endTime || '';
   document.getElementById('event-location').value          = defaults.location || '';
   document.getElementById('event-recurrence').value        = defaults.recurrenceType || 'NONE';
+  eventTagInput = makeTagInput('event-tags-wrap', defaults.tags || '');
   document.getElementById('event-recurrence-end').value    = defaults.recurrenceEnd || '';
   document.getElementById('event-important').checked       = !!defaults.isImportant;
   document.getElementById('recurrence-end-group').style.display =
@@ -86,14 +129,19 @@ document.querySelectorAll('.modal-backdrop').forEach(el => {
 
 // ── Save event ──
 document.getElementById('event-save-btn').addEventListener('click', async () => {
-  const title = document.getElementById('event-title').value.trim();
-  const date  = document.getElementById('event-date').value;
+  const title    = document.getElementById('event-title').value.trim();
+  const date     = document.getElementById('event-date').value;
+  const endDate  = document.getElementById('event-end-date').value;
   if (!title || !date) { toast('Title and date are required', 'error'); return; }
 
-  const startT = document.getElementById('event-start').value;
-  const endT   = document.getElementById('event-end').value;
-  const startTime    = startT ? `${date}T${startT}:00` : `${date}T00:00:00`;
-  const endTime      = endT   ? `${date}T${endT}:00`   : null;
+  const startT  = document.getElementById('event-start').value;
+  const endT    = document.getElementById('event-end').value;
+  const startTime = startT ? `${date}T${startT}:00` : `${date}T00:00:00`;
+  // Multi-day: use endDate if provided and different from startDate
+  const effectiveEndDate = (endDate && endDate >= date) ? endDate : date;
+  const endTime = endT
+    ? `${effectiveEndDate}T${endT}:00`
+    : (effectiveEndDate !== date ? `${effectiveEndDate}T00:00:00` : null);
   const instanceDate = document.getElementById('event-instance-date').value;
   const parentId     = document.getElementById('event-parent-id').value;
 
@@ -107,6 +155,7 @@ document.getElementById('event-save-btn').addEventListener('click', async () => 
     isImportant:    document.getElementById('event-important').checked,
     recurrenceType: document.getElementById('event-recurrence').value,
     recurrenceEnd:  document.getElementById('event-recurrence-end').value || null,
+    tags:           eventTagInput?.getValue() || '',
     ...(instanceDate ? { _instanceDate: instanceDate, parentEventId: parentId || editingEventId } : {}),
   };
 
@@ -151,8 +200,9 @@ function refreshDayModal() {
   const dayPersonal = events.filter(e => e.start_time?.startsWith(dayModalDate));
   const dayWork     = outlookEvents.filter(e => e.start_time?.startsWith(dayModalDate));
 
-  // Separate all-day events (T00:00:00 with no meaningful time)
-  const isAllDay = e => !e.end_time && e.start_time?.endsWith('T00:00:00');
+  // Separate all-day/multi-day events (no meaningful time of day)
+  const isAllDay = e =>
+    e.start_time?.endsWith('T00:00:00') && (!e.end_time || e.end_time.endsWith('T00:00:00'));
   const persAllDay  = dayPersonal.filter(isAllDay);
   const persTimed   = dayPersonal.filter(e => !isAllDay(e));
   const workAllDay  = dayWork.filter(isAllDay);
@@ -726,13 +776,17 @@ window.startEdit = function(ev, isRecurring) {
   window.closeDetailModal();
   if (isRecurring) { showRecurMenu(ev, 'edit'); }
   else {
+    const evStartDate = ev.start_time?.split('T')[0];
+    const evEndDate   = ev.end_time?.split('T')[0];
     openEventModal({
       id: ev.id, title: ev.title, description: ev.description,
-      date: ev.start_time?.split('T')[0],
+      date: evStartDate,
+      endDate: evEndDate !== evStartDate ? evEndDate : '',
       startTime: ev.start_time ? new Date(ev.start_time).toTimeString().slice(0,5) : '',
       endTime:   ev.end_time   ? new Date(ev.end_time).toTimeString().slice(0,5)   : '',
       location: ev.location, color: ev.color, isImportant: ev.is_important,
       recurrenceType: ev.recurrence_type, recurrenceEnd: ev.recurrence_end,
+      tags: ev.tags || '',
     });
   }
 };
@@ -773,21 +827,30 @@ function showRecurMenu(ev, action) {
 }
 
 window.editInstance = function(ev) {
+  const evStartDate = ev.start_time?.split('T')[0];
+  const evEndDate   = ev.end_time?.split('T')[0];
   openEventModal({
-    id: ev.id, _instanceDate: ev._instanceDate || ev.start_time?.split('T')[0],
+    id: ev.id, _instanceDate: ev._instanceDate || evStartDate,
     _parentId: ev.parent_event_id || ev.id, title: ev.title, description: ev.description,
-    date: ev.start_time?.split('T')[0],
+    date: evStartDate,
+    endDate: evEndDate !== evStartDate ? evEndDate : '',
     startTime: ev.start_time ? new Date(ev.start_time).toTimeString().slice(0,5) : '',
     endTime:   ev.end_time   ? new Date(ev.end_time).toTimeString().slice(0,5)   : '',
-    location: ev.location, color: ev.color, isImportant: !!ev.is_important, recurrenceType: 'NONE',
+    location: ev.location, color: ev.color, isImportant: !!ev.is_important,
+    recurrenceType: 'NONE', tags: ev.tags || '',
   });
 };
 window.editSeries = function(id, ev) {
+  const evStartDate = ev.start_time?.split('T')[0];
+  const evEndDate   = ev.end_time?.split('T')[0];
   openEventModal({
-    id, title: ev.title, description: ev.description, date: ev.start_time?.split('T')[0],
+    id, title: ev.title, description: ev.description,
+    date: evStartDate,
+    endDate: evEndDate !== evStartDate ? evEndDate : '',
     startTime: ev.start_time ? new Date(ev.start_time).toTimeString().slice(0,5) : '',
     location: ev.location, color: ev.color, isImportant: !!ev.is_important,
     recurrenceType: ev.recurrence_type, recurrenceEnd: ev.recurrence_end,
+    tags: ev.tags || '',
   });
 };
 window.deleteInstance = (id, date) => confirmDelete(id, false, date);
