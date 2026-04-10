@@ -752,10 +752,13 @@ async function fetchOutlookEventsInRange(env, start, end) {
   }
   out.sort((a, b) => new Date(a.start_time) - new Date(b.start_time));
 
-  // Deduplicate: same title + same start_time = same meeting from two ICS feeds
+  // Deduplicate: same title + same start minute = same meeting from two ICS feeds
+  // (Two feeds may produce slightly different UTC seconds for the same local time)
   const seen = new Set();
   return out.filter(ev => {
-    const key = `${ev.start_time}|${ev.title}`;
+    const dt  = new Date(ev.start_time);
+    const min = `${dt.getUTCFullYear()}-${dt.getUTCMonth()}-${dt.getUTCDate()}-${dt.getUTCHours()}-${dt.getUTCMinutes()}`;
+    const key = `${min}|${ev.title}`;
     if (seen.has(key)) return false;
     seen.add(key);
     return true;
