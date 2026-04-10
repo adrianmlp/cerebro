@@ -1058,33 +1058,56 @@ document.getElementById('toggle-personal').addEventListener('click', () => {
 });
 applyToggleUI();
 
-// ── Tag filter ──
+// ── Tag filter dropdown ──
+let _tagDropdownOpen = false;
 function renderTagFilter() {
   const allTags = [...new Set(
     events.flatMap(e => (e.tags || '').split(',').map(t => t.trim()).filter(Boolean))
   )].sort();
-  const row = document.getElementById('cal-tag-filter');
-  if (!allTags.length) { row.style.display = 'none'; return; }
-  row.style.display = 'flex';
-  const pills = document.getElementById('cal-tag-pills');
-  pills.innerHTML = allTags.map(t =>
-    `<button class="filter-pill${activeTag === t ? ' active' : ''}" data-tag="${t}">${t}</button>`
-  ).join('');
-  pills.querySelectorAll('.filter-pill').forEach(btn => {
-    btn.addEventListener('click', () => {
-      activeTag = activeTag === btn.dataset.tag ? '' : btn.dataset.tag;
-      localStorage.setItem('cal_active_tag', activeTag);
-      renderTagFilter();
-      render();
+
+  const pills   = document.getElementById('cal-tag-pills');
+  const empty   = document.getElementById('cal-tag-empty');
+  const label   = document.getElementById('cal-tag-label');
+  const btn     = document.getElementById('cal-tag-btn');
+
+  // Update label / button highlight
+  label.textContent = activeTag ? activeTag : 'Tags';
+  btn.classList.toggle('cal-tag-btn-active', !!activeTag);
+
+  if (!allTags.length) {
+    pills.innerHTML = '';
+    empty.style.display = 'block';
+  } else {
+    empty.style.display = 'none';
+    pills.innerHTML = [
+      ...(activeTag ? [`<button class="filter-pill active" data-tag="">✕ Clear filter</button>`] : []),
+      ...allTags.map(t => `<button class="filter-pill${activeTag === t ? ' active' : ''}" data-tag="${t}">${t}</button>`),
+    ].join('');
+    pills.querySelectorAll('.filter-pill').forEach(btn => {
+      btn.addEventListener('click', () => {
+        activeTag = btn.dataset.tag; // '' for clear
+        localStorage.setItem('cal_active_tag', activeTag);
+        closeTagDropdown();
+        renderTagFilter();
+        render();
+      });
     });
-  });
-  document.getElementById('cal-tag-clear').style.display = activeTag ? 'inline-flex' : 'none';
+  }
 }
-document.getElementById('cal-tag-clear').addEventListener('click', () => {
-  activeTag = '';
-  localStorage.setItem('cal_active_tag', '');
-  renderTagFilter();
-  render();
+
+function closeTagDropdown() {
+  _tagDropdownOpen = false;
+  document.getElementById('cal-tag-dropdown').classList.remove('open');
+}
+
+document.getElementById('cal-tag-btn').addEventListener('click', e => {
+  e.stopPropagation();
+  _tagDropdownOpen = !_tagDropdownOpen;
+  document.getElementById('cal-tag-dropdown').classList.toggle('open', _tagDropdownOpen);
+});
+
+document.addEventListener('click', e => {
+  if (!e.target.closest('#cal-tag-dropdown-wrap')) closeTagDropdown();
 });
 
 // ── Init ──

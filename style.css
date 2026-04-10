@@ -870,6 +870,40 @@ body {
   overflow: hidden;
 }
 
+/* Tag filter dropdown */
+.cal-tag-dropdown-wrap {
+  position: relative;
+}
+.cal-tag-btn-active {
+  background: rgba(99,102,241,0.15) !important;
+  border-color: var(--indigo) !important;
+  color: var(--indigo) !important;
+}
+.cal-tag-dropdown {
+  display: none;
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  min-width: 180px;
+  max-width: 280px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--r-card);
+  padding: 10px;
+  z-index: 50;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+}
+.cal-tag-dropdown.open { display: block; }
+.cal-tag-dropdown #cal-tag-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.cal-tag-dropdown .filter-pill {
+  font-size: 12px;
+  padding: 4px 10px;
+}
+
 /* Work / Personal toggle pills */
 .cal-toggle {
   padding: 5px 12px;
