@@ -1021,10 +1021,25 @@ body {
   margin-bottom: 6px;
 }
 
+.notes-list-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 4px;
+}
+.notes-list-tag {
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 10px;
+  background: rgba(255,255,255,0.07);
+  color: var(--text-3);
+  border: 1px solid var(--border);
+}
 .notes-list-footer {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  margin-top: 4px;
 }
 
 .notes-list-time {
@@ -1083,7 +1098,8 @@ body {
   margin-right: auto;
 }
 
-.note-save-indicator.saved { color: var(--green); }
+.note-save-indicator.saved   { color: var(--green); }
+.note-save-indicator.unsaved { color: var(--amber, #f5a623); }
 
 .note-editor-title {
   font-family: var(--font-head);

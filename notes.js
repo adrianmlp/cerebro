@@ -81,6 +81,7 @@ function renderList() {
     return `<div class="notes-list-item${active}" onclick="openNote('${n.id}')">
       <div class="notes-list-title">${n.title || 'Untitled'}</div>
       <div class="notes-list-preview">${(n.content || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim()}</div>
+      ${parseTags(n.tags).length ? `<div class="notes-list-tags">${parseTags(n.tags).map(t=>`<span class="notes-list-tag">${t}</span>`).join('')}</div>` : ''}
       <div class="notes-list-footer">
         <span class="notes-list-time">${formatTimestamp(n.updated_at)}</span>
         <button class="btn-icon danger" onclick="event.stopPropagation();deleteNote('${n.id}')" title="Delete">🗑</button>
@@ -98,9 +99,10 @@ window.openNote = function(id) {
 
   document.getElementById('note-title').value     = note.title   || '';
   document.getElementById('note-content').innerHTML = note.content || '';
+  setDirty(false);
   const ind = document.getElementById('save-indicator');
   ind.textContent = '';
-  ind.classList.remove('saved');
+  ind.classList.remove('saved', 'unsaved');
 
   renderCurrentTags();
   document.getElementById('notes-panel-empty').style.display = 'none';
@@ -123,6 +125,7 @@ function renderCurrentTags() {
 window.removeTag = function(i) {
   currentTags.splice(i, 1);
   renderCurrentTags();
+  if (currentNoteId) setDirty(true);
 };
 
 document.getElementById('note-tag-input').addEventListener('keydown', e => {
@@ -132,6 +135,7 @@ document.getElementById('note-tag-input').addEventListener('keydown', e => {
     if (val && !currentTags.includes(val)) {
       currentTags.push(val);
       renderCurrentTags();
+      if (currentNoteId) setDirty(true);
     }
     e.target.value = '';
   }
@@ -154,6 +158,20 @@ document.getElementById('back-btn').addEventListener('click', () => {
   document.getElementById('notes-split').classList.remove('note-open');
 });
 
+// ── Dirty tracking ──
+let isDirty = false;
+function setDirty(val) {
+  isDirty = val;
+  const ind = document.getElementById('save-indicator');
+  if (val) {
+    ind.textContent = 'Unsaved changes';
+    ind.classList.add('unsaved');
+    ind.classList.remove('saved');
+  } else {
+    ind.classList.remove('unsaved');
+  }
+}
+
 // ── Save ──
 async function saveNote() {
   if (!currentNoteId) return;
@@ -168,13 +186,14 @@ async function saveNote() {
     });
     const idx = allNotes.findIndex(n => n.id === currentNoteId);
     if (idx >= 0) allNotes[idx] = note;
+    setDirty(false);
     ind.textContent = 'Saved ✓';
     ind.classList.add('saved');
-    setTimeout(() => { ind.textContent = ''; ind.classList.remove('saved'); }, 2000);
+    setTimeout(() => { if (!isDirty) { ind.textContent = ''; ind.classList.remove('saved'); } }, 2000);
     renderList();
   } catch (e) {
     ind.textContent = 'Save failed';
-    ind.classList.remove('saved');
+    ind.classList.remove('saved', 'unsaved');
   }
 }
 
@@ -220,6 +239,8 @@ noteContent.addEventListener('keydown', e => {
 });
 noteContent.addEventListener('keyup',   updateToolbarState);
 noteContent.addEventListener('mouseup', updateToolbarState);
+noteContent.addEventListener('input',   () => { if (currentNoteId) setDirty(true); });
+document.getElementById('note-title').addEventListener('input', () => { if (currentNoteId) setDirty(true); });
 
 // ── Delete ──
 window.deleteNote = async function(id) {
