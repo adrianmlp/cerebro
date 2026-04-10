@@ -381,12 +381,11 @@ function renderBrief(data) {
 
     // Meetings
     const meetSec = data.meetings?.length
-      ? `<div class="brief-meeting-list">${data.meetings.slice(0,5).map(e=>`
+      ? `<div class="brief-meeting-list">${data.meetings.map(e=>`
           <div class="brief-meeting-item">
             <span class="brief-meeting-time">${briefFmtTime(e.start_time)}</span>
             <span class="brief-meeting-title">${e.title}</span>
           </div>`).join('')}
-          ${data.meetings.length > 5 ? `<div class="brief-empty">+${data.meetings.length-5} more</div>` : ''}
         </div>`
       : `<div class="brief-empty">No meetings today</div>`;
 
