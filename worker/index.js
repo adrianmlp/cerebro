@@ -114,6 +114,7 @@ async function runMigrations(env) {
   }
   // Column additions — idempotent
   try { await env.DB.prepare(`ALTER TABLE notes ADD COLUMN tags TEXT DEFAULT ''`).run(); } catch(e) {}
+  try { await env.DB.prepare(`ALTER TABLE calendar_events ADD COLUMN tags TEXT DEFAULT ''`).run(); } catch(e) {}
   try { await env.DB.prepare(`ALTER TABLE outlook_events ADD COLUMN event_tzid TEXT`).run(); } catch(e) {}
   try { await env.DB.prepare(`ALTER TABLE outlook_events ADD COLUMN local_start TEXT`).run(); } catch(e) {}
 }
@@ -1407,12 +1408,12 @@ async function handleRequest(request, env) {
           const body = await request.json();
           const id   = crypto.randomUUID();
           const event = await env.DB.prepare(
-            `INSERT INTO calendar_events (id,title,description,start_time,end_time,color,is_important,location,recurrence_type,recurrence_end)
-             VALUES (?,?,?,?,?,?,?,?,?,?) RETURNING *`
+            `INSERT INTO calendar_events (id,title,description,start_time,end_time,color,is_important,location,recurrence_type,recurrence_end,tags)
+             VALUES (?,?,?,?,?,?,?,?,?,?,?) RETURNING *`
           ).bind(
             id, body.title, body.description || '', body.startTime, body.endTime || null,
             body.color || '#6366F1', body.isImportant ? 1 : 0, body.location || '',
-            body.recurrenceType || 'NONE', body.recurrenceEnd || null
+            body.recurrenceType || 'NONE', body.recurrenceEnd || null, body.tags || ''
           ).first();
           return json({ event }, 201);
         }
@@ -1462,7 +1463,7 @@ async function handleRequest(request, env) {
             return json({ event }, 201);
           }
 
-          const allowed = { title: body.title, description: body.description, start_time: body.startTime, end_time: body.endTime, color: body.color, is_important: body.isImportant !== undefined ? (body.isImportant ? 1 : 0) : undefined, location: body.location, recurrence_type: body.recurrenceType, recurrence_end: body.recurrenceEnd };
+          const allowed = { title: body.title, description: body.description, start_time: body.startTime, end_time: body.endTime, color: body.color, is_important: body.isImportant !== undefined ? (body.isImportant ? 1 : 0) : undefined, location: body.location, recurrence_type: body.recurrenceType, recurrence_end: body.recurrenceEnd, tags: body.tags };
           const sets = []; const p = [];
           for (const [k, v] of Object.entries(allowed)) {
             if (v !== undefined) { sets.push(`${k} = ?`); p.push(v === '' ? null : v); }

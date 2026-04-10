@@ -89,12 +89,12 @@
       </div>
       <div class="form-row">
         <div class="form-group">
-          <label class="form-label">Date *</label>
+          <label class="form-label">Start Date *</label>
           <input class="input" type="date" id="event-date" />
         </div>
         <div class="form-group">
-          <label class="form-label">Location</label>
-          <input class="input" id="event-location" placeholder="Optional" />
+          <label class="form-label">End Date <span style="font-weight:400;color:var(--text-3)">(multi-day)</span></label>
+          <input class="input" type="date" id="event-end-date" />
         </div>
       </div>
       <div class="form-row">
@@ -106,6 +106,10 @@
           <label class="form-label">End Time</label>
           <input class="input" type="time" id="event-end" />
         </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Location</label>
+        <input class="input" id="event-location" placeholder="Optional" />
       </div>
       <div id="event-tz-hint" style="font-size:11px;color:var(--text-3);margin-top:-6px;margin-bottom:4px"></div>
       <div class="form-row">
@@ -127,6 +131,10 @@
       <div class="form-group">
         <label class="form-label">Color</label>
         <div class="color-picker" id="color-picker"></div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Tags</label>
+        <div class="tag-input-wrap" id="event-tags-wrap"></div>
       </div>
       <div class="form-group" style="display:flex;align-items:center;gap:10px">
         <input type="checkbox" id="event-important" style="width:16px;height:16px;accent-color:var(--indigo);cursor:pointer" />
