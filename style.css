@@ -870,6 +870,21 @@ body {
   overflow: hidden;
 }
 
+/* Work / Personal toggle pills */
+.cal-toggle {
+  padding: 5px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-3);
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.15s;
+  opacity: 0.45;
+}
+.cal-toggle:hover { border-color: var(--border-hover); opacity: 0.75; }
+.cal-toggle.active { opacity: 1; color: var(--text-1); border-color: var(--border-hover); background: rgba(255,255,255,0.06); }
+
 .segmented button {
   padding: 7px 14px;
   font-size: 12px;

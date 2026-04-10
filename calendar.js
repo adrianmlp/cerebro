@@ -22,6 +22,11 @@ let dayModalDate   = null;
 let outlookDetailEv = null;       // Outlook event currently shown in detail modal
 let eventTagInput  = null;        // tag-input instance for the event modal
 
+// ── View filter state (persisted) ──
+let showWork     = JSON.parse(localStorage.getItem('cal_show_work')     ?? 'true');
+let showPersonal = JSON.parse(localStorage.getItem('cal_show_personal') ?? 'true');
+let activeTag    = localStorage.getItem('cal_active_tag') || '';
+
 // ── Tag input helper (shared with settings.js) ──
 function _escHtml(s) {
   return (s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
@@ -312,6 +317,7 @@ async function loadEvents() {
     events        = evts;
     outlookEvents = outlookEvts;
     render();
+    renderTagFilter();
     if (dayModalDate) refreshDayModal();
   } catch (e) { toast(e.message, 'error'); }
 }
@@ -376,20 +382,22 @@ function renderMonth() {
     return localDateStr(d);
   }
 
-  // Normalize all events with date ranges
+  // Normalize all events with date ranges, respecting work/personal toggles + tag filter
   const allEvs = [
-    ...events.map(e => ({
-      id: e.id, uid: null, title: e.title, color: e.color,
-      _source: 'personal', _instanceDate: e._instanceDate || '',
-      _startDate: e.start_time?.split('T')[0],
-      _endDate: (e.end_time || e.start_time)?.split('T')[0],
-    })),
-    ...outlookEvents.map(e => ({
+    ...(showPersonal ? events
+      .filter(e => !activeTag || (e.tags || '').split(',').map(t => t.trim()).includes(activeTag))
+      .map(e => ({
+        id: e.id, uid: null, title: e.title, color: e.color,
+        _source: 'personal', _instanceDate: e._instanceDate || '',
+        _startDate: e.start_time?.split('T')[0],
+        _endDate: (e.end_time || e.start_time)?.split('T')[0],
+      })) : []),
+    ...(showWork ? outlookEvents.map(e => ({
       id: null, uid: e.uid, title: e.title, color: '#0EA5E9',
       _source: 'work', _instanceDate: e._instanceDate || '',
       _startDate: e.start_time?.split('T')[0],
       _endDate: (e.end_time || e.start_time)?.split('T')[0],
-    })),
+    })) : []),
   ].filter(e => e._startDate);
 
   // Build week rows: array of arrays of 7 date strings (null = padding)
@@ -634,8 +642,30 @@ function renderTimeGrid(mode, cols, sourceEvents, isWork) {
 
 function renderSplitView(mode) {
   const cols = getColumns(mode);
-  return `
-  <div class="cal-split-wrapper">
+  const filtPersonal = events.filter(e =>
+    !activeTag || (e.tags || '').split(',').map(t => t.trim()).includes(activeTag)
+  );
+
+  if (!showWork && !showPersonal) {
+    return `<div style="text-align:center;padding:60px 20px;color:var(--text-3)">All events hidden — use the toggles above to show events.</div>`;
+  }
+  if (!showWork) {
+    return `<div class="cal-split-wrapper">
+      <div class="cal-split-panel">
+        <div class="cal-split-header personal-header">🏠 Personal — Cerebro</div>
+        ${renderTimeGrid(mode, cols, filtPersonal, false)}
+      </div>
+    </div>`;
+  }
+  if (!showPersonal) {
+    return `<div class="cal-split-wrapper">
+      <div class="cal-split-panel">
+        <div class="cal-split-header work-header">🏢 Work — Outlook</div>
+        ${renderTimeGrid(mode, cols, outlookEvents, true)}
+      </div>
+    </div>`;
+  }
+  return `<div class="cal-split-wrapper">
     <div class="cal-split-panel">
       <div class="cal-split-header work-header">🏢 Work — Outlook</div>
       ${renderTimeGrid(mode, cols, outlookEvents, true)}
@@ -643,7 +673,7 @@ function renderSplitView(mode) {
     <div class="cal-split-divider"></div>
     <div class="cal-split-panel">
       <div class="cal-split-header personal-header">🏠 Personal — Cerebro</div>
-      ${renderTimeGrid(mode, cols, events, false)}
+      ${renderTimeGrid(mode, cols, filtPersonal, false)}
     </div>
   </div>`;
 }
@@ -1008,6 +1038,54 @@ document.getElementById('cal-content').addEventListener('touchend', e => {
     else         document.getElementById('prev-btn').click();
   }
 }, { passive: true });
+
+// ── Work / Personal toggles ──
+function applyToggleUI() {
+  document.getElementById('toggle-work').classList.toggle('active', showWork);
+  document.getElementById('toggle-personal').classList.toggle('active', showPersonal);
+}
+document.getElementById('toggle-work').addEventListener('click', () => {
+  showWork = !showWork;
+  localStorage.setItem('cal_show_work', showWork);
+  applyToggleUI();
+  render();
+});
+document.getElementById('toggle-personal').addEventListener('click', () => {
+  showPersonal = !showPersonal;
+  localStorage.setItem('cal_show_personal', showPersonal);
+  applyToggleUI();
+  render();
+});
+applyToggleUI();
+
+// ── Tag filter ──
+function renderTagFilter() {
+  const allTags = [...new Set(
+    events.flatMap(e => (e.tags || '').split(',').map(t => t.trim()).filter(Boolean))
+  )].sort();
+  const row = document.getElementById('cal-tag-filter');
+  if (!allTags.length) { row.style.display = 'none'; return; }
+  row.style.display = 'flex';
+  const pills = document.getElementById('cal-tag-pills');
+  pills.innerHTML = allTags.map(t =>
+    `<button class="filter-pill${activeTag === t ? ' active' : ''}" data-tag="${t}">${t}</button>`
+  ).join('');
+  pills.querySelectorAll('.filter-pill').forEach(btn => {
+    btn.addEventListener('click', () => {
+      activeTag = activeTag === btn.dataset.tag ? '' : btn.dataset.tag;
+      localStorage.setItem('cal_active_tag', activeTag);
+      renderTagFilter();
+      render();
+    });
+  });
+  document.getElementById('cal-tag-clear').style.display = activeTag ? 'inline-flex' : 'none';
+}
+document.getElementById('cal-tag-clear').addEventListener('click', () => {
+  activeTag = '';
+  localStorage.setItem('cal_active_tag', '');
+  renderTagFilter();
+  render();
+});
 
 // ── Init ──
 loadEvents();
