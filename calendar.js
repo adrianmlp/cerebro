@@ -64,7 +64,17 @@ function makeTagInput(wrapId, initialValue) {
     wrap.addEventListener('click', () => wrap.querySelector('.tag-input-field')?.focus());
   }
   render();
-  return { getValue: () => tags.join(', '), setValue: v => { tags = (v||'').split(',').map(t=>t.trim()).filter(Boolean); render(); } };
+  return {
+    getValue: () => {
+      // Flush any text still in the input (user typed but didn't press Enter)
+      const inp = wrap.querySelector('.tag-input-field');
+      const pending = inp?.value.replace(/,+$/, '').trim();
+      if (pending && !tags.map(t => t.toLowerCase()).includes(pending.toLowerCase())) tags.push(pending);
+      if (pending) inp.value = '';
+      return tags.join(', ');
+    },
+    setValue: v => { tags = (v||'').split(',').map(t=>t.trim()).filter(Boolean); render(); },
+  };
 }
 
 // ── Color picker ──
