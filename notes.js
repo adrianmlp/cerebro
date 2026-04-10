@@ -80,7 +80,7 @@ function renderList() {
     const active = n.id === currentNoteId ? ' active' : '';
     return `<div class="notes-list-item${active}" onclick="openNote('${n.id}')">
       <div class="notes-list-title">${n.title || 'Untitled'}</div>
-      <div class="notes-list-preview">${n.content || ''}</div>
+      <div class="notes-list-preview">${(n.content || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim()}</div>
       <div class="notes-list-footer">
         <span class="notes-list-time">${formatTimestamp(n.updated_at)}</span>
         <button class="btn-icon danger" onclick="event.stopPropagation();deleteNote('${n.id}')" title="Delete">🗑</button>
@@ -96,8 +96,8 @@ window.openNote = function(id) {
   currentNoteId = id;
   currentTags   = parseTags(note.tags);
 
-  document.getElementById('note-title').value   = note.title   || '';
-  document.getElementById('note-content').value = note.content || '';
+  document.getElementById('note-title').value     = note.title   || '';
+  document.getElementById('note-content').innerHTML = note.content || '';
   const ind = document.getElementById('save-indicator');
   ind.textContent = '';
   ind.classList.remove('saved');
@@ -109,6 +109,7 @@ window.openNote = function(id) {
 
   renderList(); // re-render to update active highlight
   document.getElementById('note-content').focus();
+  updateToolbarState();
 };
 
 // ── Current tag chips (inside editor) ──
@@ -157,7 +158,7 @@ document.getElementById('back-btn').addEventListener('click', () => {
 async function saveNote() {
   if (!currentNoteId) return;
   const title   = document.getElementById('note-title').value;
-  const content = document.getElementById('note-content').value;
+  const content = document.getElementById('note-content').innerHTML;
   const tags    = currentTags.join(',');
   const ind     = document.getElementById('save-indicator');
   try {
@@ -179,33 +180,46 @@ async function saveNote() {
 
 document.getElementById('save-note-btn').addEventListener('click', saveNote);
 
-['note-title', 'note-content'].forEach(id => {
-  document.getElementById(id).addEventListener('keydown', e => {
-    if ((e.metaKey || e.ctrlKey) && e.key === 's') { e.preventDefault(); saveNote(); }
-  });
+document.getElementById('note-title').addEventListener('keydown', e => {
+  if ((e.metaKey || e.ctrlKey) && e.key === 's') { e.preventDefault(); saveNote(); }
 });
 
 // ── Formatting toolbar ──
-document.getElementById('fmt-bold').addEventListener('click', () => {
-  const ta = document.getElementById('note-content');
-  const { selectionStart: s, selectionEnd: e, value } = ta;
-  const selected = value.slice(s, e);
-  if (!selected) return;
-  ta.setRangeText(`**${selected}**`, s, e, 'end');
-  ta.focus();
+function execFmt(cmd, val = null) {
+  document.getElementById('note-content').focus();
+  document.execCommand(cmd, false, val);
+  updateToolbarState();
+}
+
+function updateToolbarState() {
+  document.getElementById('fmt-bold').classList.toggle('active', document.queryCommandState('bold'));
+  document.getElementById('fmt-italic').classList.toggle('active', document.queryCommandState('italic'));
+  document.getElementById('fmt-ul').classList.toggle('active', document.queryCommandState('insertUnorderedList'));
+  document.getElementById('fmt-ol').classList.toggle('active', document.queryCommandState('insertOrderedList'));
+  const block = document.queryCommandValue('formatBlock');
+  document.getElementById('fmt-h2').classList.toggle('active', block === 'h2');
+  document.getElementById('fmt-h3').classList.toggle('active', block === 'h3');
+}
+
+document.getElementById('fmt-bold').addEventListener('click',   () => execFmt('bold'));
+document.getElementById('fmt-italic').addEventListener('click', () => execFmt('italic'));
+document.getElementById('fmt-ul').addEventListener('click',     () => execFmt('insertUnorderedList'));
+document.getElementById('fmt-ol').addEventListener('click',     () => execFmt('insertOrderedList'));
+document.getElementById('fmt-h2').addEventListener('click', () => {
+  execFmt('formatBlock', document.queryCommandValue('formatBlock') === 'h2' ? 'p' : 'h2');
+});
+document.getElementById('fmt-h3').addEventListener('click', () => {
+  execFmt('formatBlock', document.queryCommandValue('formatBlock') === 'h3' ? 'p' : 'h3');
 });
 
-document.getElementById('fmt-bullet').addEventListener('click', () => {
-  const ta = document.getElementById('note-content');
-  const { selectionStart: s, selectionEnd: e, value } = ta;
-  const lineStart  = value.lastIndexOf('\n', s - 1) + 1;
-  const lineEndIdx = value.indexOf('\n', e);
-  const blockEnd   = lineEndIdx === -1 ? value.length : lineEndIdx;
-  const block      = value.slice(lineStart, blockEnd);
-  const bulleted   = block.split('\n').map(line => (line && !line.startsWith('• ') ? `• ${line}` : line)).join('\n');
-  ta.setRangeText(bulleted, lineStart, blockEnd, 'preserve');
-  ta.focus();
+const noteContent = document.getElementById('note-content');
+noteContent.addEventListener('keydown', e => {
+  if ((e.metaKey || e.ctrlKey) && e.key === 's') { e.preventDefault(); saveNote(); }
+  if ((e.metaKey || e.ctrlKey) && e.key === 'b') { e.preventDefault(); execFmt('bold'); }
+  if ((e.metaKey || e.ctrlKey) && e.key === 'i') { e.preventDefault(); execFmt('italic'); }
 });
+noteContent.addEventListener('keyup',   updateToolbarState);
+noteContent.addEventListener('mouseup', updateToolbarState);
 
 // ── Delete ──
 window.deleteNote = async function(id) {

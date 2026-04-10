@@ -71,11 +71,16 @@
         </div>
         <input class="note-editor-title" id="note-title" placeholder="Note title…" />
         <div class="note-toolbar">
-          <button class="note-toolbar-btn" id="fmt-bold" title="Bold"><strong>B</strong></button>
+          <button class="note-toolbar-btn" id="fmt-bold" title="Bold (Ctrl+B)"><b>B</b></button>
+          <button class="note-toolbar-btn fmt-italic-btn" id="fmt-italic" title="Italic (Ctrl+I)"><i>I</i></button>
           <div class="note-toolbar-divider"></div>
-          <button class="note-toolbar-btn" id="fmt-bullet" title="Bullet list">• List</button>
+          <button class="note-toolbar-btn" id="fmt-h2" title="Heading">H2</button>
+          <button class="note-toolbar-btn" id="fmt-h3" title="Subheading">H3</button>
+          <div class="note-toolbar-divider"></div>
+          <button class="note-toolbar-btn" id="fmt-ul" title="Bullet list">• List</button>
+          <button class="note-toolbar-btn" id="fmt-ol" title="Numbered list">1. List</button>
         </div>
-        <textarea class="note-editor-content" id="note-content" placeholder="Start writing…"></textarea>
+        <div class="note-editor-content" id="note-content" contenteditable="true" data-placeholder="Start writing…"></div>
         <div class="note-tags-section">
           <div class="note-tags-chips" id="note-tags-chips"></div>
           <input class="note-tag-input" id="note-tag-input" placeholder="Add tag… (press Enter or comma)" />
