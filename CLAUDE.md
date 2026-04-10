@@ -4,7 +4,7 @@ Personal productivity dashboard. Cloudflare Pages (frontend) + Worker (API) + D1
 
 ## Stack
 - **Frontend:** Vanilla HTML/CSS/JS, no build step. Push to GitHub → auto-deploys Pages.
-- **Worker:** `worker/index.js` → `npx wrangler deploy`
+- **Worker:** `worker/index.js` → `npx wrangler deploy` (no `--name` flag — uses `name = "cerebro-worker"` from wrangler.toml, which deploys to `cerebro-worker.mlpdev.workers.dev`, the URL all pages reference in their `<meta name="worker-url">` tag. **Never use `--name cerebro-api` or any other name override** — that deploys to a different, unused worker.)
 - **DB:** Cloudflare D1, binding `DB` (SQLite). **Never use `wrangler d1 execute`** — add migrations as `try/catch ALTER TABLE` at top of `fetch()`.
 - **AI:** Workers AI, binding `AI`, model `@cf/meta/llama-3.1-8b-instruct`
 - **Auth:** HMAC-signed 30-day tokens in `localStorage`. `POST /api/auth/token` exchanges password. `APP_PASSWORD` change invalidates all tokens.
@@ -154,3 +154,4 @@ Brief grid: 4 stocks/row desktop → 2 mobile; 3 scores/row desktop → 1 mobile
 - `const` declarations inside refactored functions can duplicate if old code isn't fully removed — causes `SyntaxError: Identifier already declared` that only appears on SW-cached loads (hard refresh works).
 - GPS `maximumAge: Infinity` reuses any cached browser position instantly; don't use short TTLs or the brief stalls waiting for a fresh GPS fix every load.
 - Brief cache: key by `cerebro_brief_v1_YYYY-MM-DD` — auto-invalidates at midnight without explicit cleanup logic.
+- **Worker deploy: always `npx wrangler deploy` with no `--name` flag.** The wrangler.toml name is `cerebro-worker`, matching the `<meta name="worker-url">` in all HTML pages. Using `--name cerebro-api` or any other name deploys to a dead worker the app never calls — changes silently have no effect.
