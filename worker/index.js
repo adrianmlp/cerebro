@@ -707,19 +707,32 @@ async function syncOutlook(env) {
 
 // ── Reusable Outlook event fetcher (used by both the API route and chat context) ──
 async function fetchOutlookEventsInRange(env, start, end) {
-  const { results: hiddenRows } = await env.DB.prepare('SELECT uid FROM hidden_outlook_events').all();
-  const hiddenUids = new Set(hiddenRows.map(r => r.uid));
-  const { results: allStored } = await env.DB.prepare('SELECT * FROM outlook_events').all();
+  const [{ results: hiddenRows }, { results: allStored }, stripRow] = await Promise.all([
+    env.DB.prepare('SELECT uid FROM hidden_outlook_events').all(),
+    env.DB.prepare('SELECT * FROM outlook_events').all(),
+    env.DB.prepare("SELECT value FROM settings WHERE key='outlook_title_strip'").first(),
+  ]);
+  const hiddenUids  = new Set(hiddenRows.map(r => r.uid));
+  const stripPhrases = (stripRow?.value || '').split('||').map(p => p.trim()).filter(Boolean);
+
+  function cleanTitle(title) {
+    if (!stripPhrases.length) return title;
+    let t = title || '';
+    for (const phrase of stripPhrases) t = t.split(phrase).join('');
+    return t.trim();
+  }
+
   const out = [];
   for (const ev of allStored) {
     if (hiddenUids.has(ev.uid)) continue;
     if (!ev.start_time) continue;
+    const cleaned = { ...ev, title: cleanTitle(ev.title) };
     if (!ev.recurrence_rule) {
       const d = ev.start_time.split('T')[0];
-      if (d >= start && d <= end) out.push(ev);
+      if (d >= start && d <= end) out.push(cleaned);
     } else {
       const rrule = parseRRule(ev.recurrence_rule);
-      if (rrule) out.push(...generateOutlookInstances(ev, rrule, start, end));
+      if (rrule) out.push(...generateOutlookInstances(cleaned, rrule, start, end));
     }
   }
   out.sort((a, b) => new Date(a.start_time) - new Date(b.start_time));
@@ -1720,21 +1733,23 @@ Reply in 1-3 sentences. For create task/event return JSON: {"message":"...","act
       if (seg[1] === 'brief' && seg[2] === 'settings') {
         if (!await checkAuth(request, env)) return json({ error: 'Unauthorized' }, 401);
         if (method === 'GET') {
-          const [t, te, to, wz] = await Promise.all([
+          const [t, te, to, wz, os] = await Promise.all([
             env.DB.prepare('SELECT value FROM settings WHERE key=?').bind('brief_tickers').first(),
             env.DB.prepare('SELECT value FROM settings WHERE key=?').bind('brief_teams').first(),
             env.DB.prepare('SELECT value FROM settings WHERE key=?').bind('brief_topics').first(),
             env.DB.prepare('SELECT value FROM settings WHERE key=?').bind('weather_zip').first(),
+            env.DB.prepare('SELECT value FROM settings WHERE key=?').bind('outlook_title_strip').first(),
           ]);
-          return json({ tickers: t?.value||'', teams: te?.value||'', topics: to?.value||'', weatherZip: wz?.value||'' });
+          return json({ tickers: t?.value||'', teams: te?.value||'', topics: to?.value||'', weatherZip: wz?.value||'', outlookTitleStrip: os?.value||'' });
         }
         if (method === 'PUT') {
-          const { tickers='', teams='', topics='', weatherZip='' } = await request.json();
+          const { tickers='', teams='', topics='', weatherZip='', outlookTitleStrip='' } = await request.json();
           await Promise.all([
             env.DB.prepare('INSERT OR REPLACE INTO settings (key,value) VALUES (?,?)').bind('brief_tickers', tickers).run(),
             env.DB.prepare('INSERT OR REPLACE INTO settings (key,value) VALUES (?,?)').bind('brief_teams', teams).run(),
             env.DB.prepare('INSERT OR REPLACE INTO settings (key,value) VALUES (?,?)').bind('brief_topics', topics).run(),
             env.DB.prepare('INSERT OR REPLACE INTO settings (key,value) VALUES (?,?)').bind('weather_zip', weatherZip).run(),
+            env.DB.prepare('INSERT OR REPLACE INTO settings (key,value) VALUES (?,?)').bind('outlook_title_strip', outlookTitleStrip).run(),
           ]);
           return json({ ok: true });
         }
